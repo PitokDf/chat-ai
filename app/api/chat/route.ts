@@ -21,9 +21,20 @@ type ChatRequest = {
   searchProvider?: string;
   serperApiKey?: string;
   tavilyApiKey?: string;
-  skills?: Array<{ id: string; name: string; description: string; content: string }>;
+  skills?: Array<{
+    id: string;
+    name: string;
+    description: string;
+    content: string;
+  }>;
   memories?: Array<{ id: string; fact: string; createdAt: number }>;
-  mcpServers?: Array<{ id: string; name: string; command: string; args: string[]; env: Record<string, string> }>;
+  mcpServers?: Array<{
+    id: string;
+    name: string;
+    command: string;
+    args: string[];
+    env: Record<string, string>;
+  }>;
 };
 
 const isValidMessage = (value: unknown): value is UIMessage => {
@@ -83,30 +94,44 @@ export async function POST(request: Request) {
 
   try {
     const model = resolveLanguageModel({ providerId, modelId, apiKey });
-    
+
     // Connect to MCP servers
     const { getMcpClients } = await import("@/lib/agent/mcp");
     const mcpClients = mcpServers ? await getMcpClients(mcpServers) : [];
 
     let dynamicSystemPrompt = AGENT_SYSTEM_PROMPT;
-    
+
+    // Inject system runtime date to prevent AI time hallucinations
+    const now = new Date();
+    const timeFormatter = new Intl.DateTimeFormat("id-ID", {
+      timeZone: "Asia/Jakarta", // Set the primary relative timezone (WIB)
+      dateStyle: "full",
+      timeStyle: "long",
+    });
+    dynamicSystemPrompt += `\n\n<current_time>\nWaktu sistem saat ini adalah: ${timeFormatter.format(now)}. Gunakan ini sebagai referensi mutlak hari ini, minggu ini, atau bulan ini. Jangan berhalusinasi soal tanggal.\n</current_time>`;
+
     if (memories && memories.length > 0) {
-      const memoryList = memories.map(m => `- ${m.fact}`).join("\n");
+      const memoryList = memories.map((m) => `- ${m.fact}`).join("\n");
       dynamicSystemPrompt += `\n\n<user_memory>\nKamu mengingat beberapa fakta tentang user ini secara permanen dari chat sebelumnya:\n${memoryList}\nGunakan informasi di atas untuk melakukan personalisasi jawabanmu. Jangan beri tahu user bahwa kamu "mengingat dari memori", cukup langsung gunakan faktanya secara natural.\n</user_memory>`;
     }
 
     if (skills && skills.length > 0) {
-      const skillsToc = skills.map(s => `- ${s.name}: ${s.description}`).join("\n");
+      const skillsToc = skills
+        .map((s) => `- ${s.name}: ${s.description}`)
+        .join("\n");
       dynamicSystemPrompt += `\n\n<available_skills>\nKamu memiliki koleksi "Skills" (instruksi/konteks khusus) yang dibuat oleh user. Berikut adalah daftarnya:\n${skillsToc}\nJika user meminta sesuatu yang berkaitan dengan skill di atas, gunakan tool \`readSkill\` untuk membaca instruksi lengkapnya SEBELUM kamu memberikan jawaban akhir atau menulis kode.\n</available_skills>`;
     }
 
-    const orbitTools = await createOrbitTools({
-      searchProvider: searchProvider as any,
-      braveSearchKey,
-      serperApiKey,
-      tavilyApiKey,
-      skills,
-    }, mcpClients);
+    const orbitTools = await createOrbitTools(
+      {
+        searchProvider: searchProvider as any,
+        braveSearchKey,
+        serperApiKey,
+        tavilyApiKey,
+        skills,
+      },
+      mcpClients,
+    );
 
     const result = streamText({
       model,

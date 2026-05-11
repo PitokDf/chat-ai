@@ -7,7 +7,11 @@ import type { ChatToolCall } from "@/lib/store/chat";
 import { NewsCard } from "./news-card";
 import { StockHistoryCard } from "./stock-history-card";
 import { StockQuoteCard } from "./stock-quote-card";
+import { StockTechnicalCard } from "./stock-technical-card";
 import { WeatherCard } from "./weather-card";
+import { MarketMoversCard } from "./market-movers-card";
+import { CryptoTrackerCard } from "./crypto-tracker-card";
+import { RiskCalculatorCard } from "./risk-calculator-card";
 import {
   CalculatorCard,
   CurrencyCard,
@@ -20,6 +24,12 @@ const TOOL_LABEL: Record<string, string> = {
   weather: "Weather",
   stockQuote: "Stock quote",
   stockHistory: "Stock history",
+  stockTechnicalAnalysis: "Technical analysis",
+  marketMovers: "Market movers",
+  cryptoTracker: "Crypto tracker",
+  riskCalculator: "Risk calculator",
+  fundamentalAnalysis: "Fundamental analysis",
+  financialSentiment: "Market sentiment",
   newsSearch: "News",
   currency: "Currency",
   wikipedia: "Wikipedia",
@@ -35,6 +45,14 @@ const renderCardBody = (call: ChatToolCall) => {
       return <StockQuoteCard call={call} />;
     case "stockHistory":
       return <StockHistoryCard call={call} />;
+    case "stockTechnicalAnalysis":
+      return <StockTechnicalCard call={call} />;
+    case "marketMovers":
+      return <MarketMoversCard call={call} />;
+    case "cryptoTracker":
+      return <CryptoTrackerCard call={call} />;
+    case "riskCalculator":
+      return <RiskCalculatorCard call={call} />;
     case "newsSearch":
       return <NewsCard call={call} />;
     case "currency":
