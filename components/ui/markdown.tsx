@@ -24,7 +24,6 @@ import remarkMath from "remark-math";
 
 import rehypeHighlight from "rehype-highlight";
 import rehypeRaw from "rehype-raw";
-
 import rehypeKatex from "rehype-katex";
 
 import rehypeSanitize, {
@@ -96,6 +95,73 @@ type PreProps =
 
 type InputProps =
   ComponentPropsWithoutRef<"input">;
+
+const normalizeMathUnicode = (
+  text: string,
+): string => {
+  return text
+    // greek
+    .replace(/θ/g, "\\theta")
+    .replace(/α/g, "\\alpha")
+    .replace(/β/g, "\\beta")
+    .replace(/γ/g, "\\gamma")
+    .replace(/λ/g, "\\lambda")
+    .replace(/μ/g, "\\mu")
+    .replace(/π/g, "\\pi")
+    .replace(/σ/g, "\\sigma")
+    .replace(/Σ/g, "\\sum")
+    .replace(/Δ/g, "\\Delta")
+    .replace(/Ω/g, "\\Omega")
+    .replace(/χ/g, "\\chi")
+    .replace(/ζ/g, "\\zeta")
+
+    // math
+    .replace(/∫/g, "\\int")
+    .replace(/∞/g, "\\infty")
+    .replace(/√/g, "\\sqrt")
+    .replace(/≈/g, "\\approx")
+    .replace(/≠/g, "\\neq")
+    .replace(/≤/g, "\\leq")
+    .replace(/≥/g, "\\geq")
+    .replace(/∂/g, "\\partial")
+    .replace(/∇/g, "\\nabla")
+    .replace(/×/g, "\\times")
+    .replace(/·/g, "\\cdot");
+};
+
+/**
+ * markdown table sering gagal dengan $$ $$
+ * jadi convert ke inline math
+ */
+const normalizeTableMath = (
+  text: string,
+): string => {
+  return text.replace(
+    /\$\$([\s\S]*?)\$\$/g,
+    (_, expr: string) => {
+      return `$${expr.trim()}$`;
+    },
+  );
+};
+
+const preprocessMarkdown = (text: string): string => {
+  if (!text) return "";
+
+  // 1. Handle standard delimiters \[ \] and \( \)
+  let processed = text
+    .replace(/\\\[([\s\S]*?)\\\]/g, (_, expr) => `\n$$\n${expr.trim()}\n$$\n`)
+    .replace(/\\\(([\s\S]*?)\\\)/g, (_, expr) => `$${expr.trim()}$`);
+
+  // 2. Handle common LaTeX environments
+  // We wrap them in $$ to ensure they are picked up as math blocks
+  // only if they are not already wrapped.
+  processed = processed.replace(
+    /(?<![\\\$])(\\begin\{.*?\}(?:[\s\S]*?)\\end\{.*?\})(?![\\\$])/gm,
+    (match) => `\n$$\n${match.trim()}\n$$\n`,
+  );
+
+  return processed;
+};
 
 const nodeToText = (
   node: ReactNode,
@@ -628,6 +694,13 @@ function MarkdownImpl({
     [],
   );
 
+  const processedContent =
+    useMemo(() => {
+      return preprocessMarkdown(
+        content,
+      );
+    }, [content]);
+
   const remarkPlugins =
     useMemo<
       NonNullable<
@@ -650,12 +723,12 @@ function MarkdownImpl({
 
   const rehypePlugins =
     useMemo<PluggableList>(() => {
-      const plugins: PluggableList =
-        [rehypeKatex];
+      const plugins: PluggableList = [
+        rehypeRaw,
+        [rehypeKatex, { output: "html", throwOnError: false }],
+      ];
 
       if (allowHtml) {
-        plugins.push(rehypeRaw);
-
         plugins.push([
           rehypeSanitize,
           sanitizeSchema,
@@ -691,7 +764,7 @@ function MarkdownImpl({
           components as Components
         }
       >
-        {content}
+        {processedContent}
       </ReactMarkdown>
     </div>
   );
