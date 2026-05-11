@@ -15,7 +15,6 @@ import type {
 
 import ReactMarkdown, {
   type Components,
-  type ExtraProps,
 } from "react-markdown";
 
 import type { PluggableList } from "unified";
@@ -26,15 +25,13 @@ import remarkMath from "remark-math";
 import rehypeHighlight from "rehype-highlight";
 import rehypeRaw from "rehype-raw";
 
+import rehypeKatex from "rehype-katex";
+
 import rehypeSanitize, {
   defaultSchema,
 } from "rehype-sanitize";
 
 import { Check, Copy } from "lucide-react";
-
-import Latex from "react-latex-next";
-
-import "katex/dist/katex.min.css";
 
 import { cn } from "@/lib/utils";
 
@@ -46,7 +43,8 @@ type MarkdownProps = {
   streaming?: boolean;
 };
 
-type HeadingProps = ComponentPropsWithoutRef<"h1">;
+type HeadingProps =
+  ComponentPropsWithoutRef<"h1">;
 
 type ParagraphProps =
   ComponentPropsWithoutRef<"p">;
@@ -66,7 +64,8 @@ type AnchorProps =
 type BlockquoteProps =
   ComponentPropsWithoutRef<"blockquote">;
 
-type HrProps = ComponentPropsWithoutRef<"hr">;
+type HrProps =
+  ComponentPropsWithoutRef<"hr">;
 
 type TableProps =
   ComponentPropsWithoutRef<"table">;
@@ -98,12 +97,6 @@ type PreProps =
 type InputProps =
   ComponentPropsWithoutRef<"input">;
 
-type MathComponentProps =
-  ComponentPropsWithoutRef<"span"> &
-  ExtraProps & {
-    children?: ReactNode;
-  };
-
 const nodeToText = (
   node: ReactNode,
 ): string => {
@@ -132,7 +125,9 @@ const nodeToText = (
       children?: ReactNode;
     }>(node)
   ) {
-    return nodeToText(node.props.children);
+    return nodeToText(
+      node.props.children,
+    );
   }
 
   return "";
@@ -160,7 +155,8 @@ function CodeBlock({
   ) {
     const match =
       /language-([\w-]+)/.exec(
-        firstChild.props.className ?? "",
+        firstChild.props.className ??
+        "",
       );
 
     language = match?.[1] ?? "";
@@ -307,8 +303,6 @@ const sanitizeSchema = {
   ],
 };
 
-// 
-
 const createComponents = () => ({
   h1: ({
     className,
@@ -364,7 +358,6 @@ const createComponents = () => ({
 
   p: ({
     className,
-    children,
     ...props
   }: ParagraphProps) => (
     <p
@@ -373,11 +366,7 @@ const createComponents = () => ({
         className,
       )}
       {...props}
-    >
-      <Latex>
-        {nodeToText(children)}
-      </Latex>
-    </p>
+    />
   ),
 
   ul: ({
@@ -408,7 +397,6 @@ const createComponents = () => ({
 
   li: ({
     className,
-    children,
     ...props
   }: ListItemProps) => (
     <li
@@ -417,11 +405,7 @@ const createComponents = () => ({
         className,
       )}
       {...props}
-    >
-      <Latex>
-        {nodeToText(children)}
-      </Latex>
-    </li>
+    />
   ),
 
   a: ({
@@ -630,22 +614,6 @@ const createComponents = () => ({
       />
     );
   },
-
-  math: ({
-    children,
-  }: MathComponentProps) => (
-    <Latex>
-      {`$$${nodeToText(children)}$$`}
-    </Latex>
-  ),
-
-  inlineMath: ({
-    children,
-  }: MathComponentProps) => (
-    <Latex>
-      {`$${nodeToText(children)}$`}
-    </Latex>
-  ),
 });
 
 function MarkdownImpl({
@@ -683,7 +651,7 @@ function MarkdownImpl({
   const rehypePlugins =
     useMemo<PluggableList>(() => {
       const plugins: PluggableList =
-        [];
+        [rehypeKatex];
 
       if (allowHtml) {
         plugins.push(rehypeRaw);
