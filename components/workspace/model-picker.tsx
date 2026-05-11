@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { AlertCircle, Brain, Loader2, RefreshCw, Server } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -29,6 +29,11 @@ export function ModelPicker() {
   const activeEntry = entry ?? getEntry(providerId);
   const models = activeEntry.models;
   const status = activeEntry.status;
+
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Auto-fetch whenever provider or its key changes.
   useEffect(() => {
@@ -111,18 +116,20 @@ export function ModelPicker() {
         disabled={status === "loading"}
         aria-label="Refresh model list"
         title={
-          status === "live"
-            ? "Live from provider API"
-            : status === "fallback"
-              ? currentKey
-                ? "Using built-in list (live fetch failed)"
-                : "Using built-in list (add API key for live list)"
-              : status === "error"
-                ? `Error: ${activeEntry.error}`
-                : "Refresh list"
+          !mounted
+            ? "Refresh list"
+            : status === "live"
+              ? "Live from provider API"
+              : status === "fallback"
+                ? currentKey
+                  ? "Using built-in list (live fetch failed)"
+                  : "Using built-in list (add API key for live list)"
+                : status === "error"
+                  ? `Error: ${activeEntry.error}`
+                  : "Refresh list"
         }
       >
-        {status === "loading" ? (
+        {!mounted || status === "loading" ? (
           <Loader2 className="h-3 w-3 animate-spin" />
         ) : status === "error" ? (
           <AlertCircle className="h-3 w-3 text-destructive" />

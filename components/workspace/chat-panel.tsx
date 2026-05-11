@@ -8,8 +8,8 @@ import {
   CircleDashed,
   FileCode,
   FileText,
-  MessageCircle,
   Paperclip,
+  Send,
   Terminal,
   X,
   Zap,
@@ -84,40 +84,42 @@ const ActionLabel = ({ action }: { action: ChatArtifactAction }) => {
 
 const MessageBlockInner = ({ message }: { message: ChatMessage }) => {
   const isUser = message.role === "user";
-  const whatsappNumber = usePreferences((s) => s.whatsappNumber);
-  const whatsappWebhookUrl = usePreferences((s) => s.whatsappWebhookUrl);
+  const telegramBotToken = usePreferences((s) => s.telegramBotToken);
+  const telegramChatId = usePreferences((s) => s.telegramChatId);
   const canShare = !isUser && message.status === "done" && !!message.text;
 
-  const handleShareWhatsapp = async () => {
+  const handleShareTelegram = async () => {
     const text = message.text.trim();
     if (!text) return;
-    const number = whatsappNumber.replace(/\D/g, "");
-    if (number) {
-      const url = `https://wa.me/${number}?text=${encodeURIComponent(text)}`;
-      window.open(url, "_blank", "noopener,noreferrer");
+    if (!telegramBotToken || !telegramChatId) {
+      toast.info(
+        "Set Telegram in Settings",
+        "Configure Bot Token and Chat ID first.",
+      );
+      return;
     }
-    if (whatsappWebhookUrl) {
-      try {
-        await fetch(whatsappWebhookUrl, {
+    try {
+      const res = await fetch(
+        `https://api.telegram.org/bot${telegramBotToken}/sendMessage`,
+        {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            to: whatsappNumber || undefined,
-            message: text,
+            chat_id: telegramChatId,
+            text,
+            parse_mode: "Markdown",
           }),
-        });
-        toast.success("Forwarded to webhook");
-      } catch (err) {
-        toast.error(
-          "Webhook failed",
-          err instanceof Error ? err.message : "Network error",
-        );
+        },
+      );
+      if (!res.ok) {
+        const err = (await res.json()) as { description?: string };
+        throw new Error(err.description ?? `HTTP ${res.status}`);
       }
-    }
-    if (!number && !whatsappWebhookUrl) {
-      toast.info(
-        "Set WhatsApp in Settings",
-        "Configure a number or webhook first.",
+      toast.success("Sent to Telegram");
+    } catch (err) {
+      toast.error(
+        "Telegram failed",
+        err instanceof Error ? err.message : "Network error",
       );
     }
   };
@@ -174,14 +176,14 @@ const MessageBlockInner = ({ message }: { message: ChatMessage }) => {
           <span className="text-muted-foreground">...</span>
         ) : null}
       </div>
-      {canShare && (whatsappNumber || whatsappWebhookUrl) ? (
+      {canShare && (telegramBotToken || telegramChatId) ? (
         <button
           type="button"
-          onClick={() => void handleShareWhatsapp()}
-          className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-emerald-500"
+          onClick={() => void handleShareTelegram()}
+          className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-sky-400"
         >
-          <MessageCircle className="h-3 w-3" />
-          Send to WhatsApp
+          <Send className="h-3 w-3" />
+          Send to Telegram
         </button>
       ) : null}
       {(message.toolCalls ?? []).length > 0 ? (

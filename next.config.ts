@@ -3,7 +3,7 @@ import type { NextConfig } from "next";
 // WebContainers require cross-origin isolation.
 // https://webcontainers.io/guides/quickstart#enabling-sharedarraybuffer
 const isolationHeaders = [
-  { key: "Cross-Origin-Embedder-Policy", value: "require-corp" },
+  { key: "Cross-Origin-Embedder-Policy", value: "credentialless" },
   { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
 ];
 

@@ -6,7 +6,7 @@ import {
 } from "ai";
 
 import { AGENT_SYSTEM_PROMPT } from "@/lib/agent/prompt";
-import { ORBIT_TOOLS } from "@/lib/agent/tools";
+import { createOrbitTools } from "@/lib/agent/tools";
 import type { ProviderId } from "@/lib/providers";
 import { resolveLanguageModel } from "@/lib/providers/resolve";
 
@@ -17,6 +17,13 @@ type ChatRequest = {
   providerId: ProviderId;
   modelId: string;
   apiKey: string;
+  braveSearchKey?: string;
+  searchProvider?: string;
+  serperApiKey?: string;
+  tavilyApiKey?: string;
+  skills?: Array<{ id: string; name: string; description: string; content: string }>;
+  memories?: Array<{ id: string; fact: string; createdAt: number }>;
+  mcpServers?: Array<{ id: string; name: string; command: string; args: string[]; env: Record<string, string> }>;
 };
 
 const isValidMessage = (value: unknown): value is UIMessage => {
@@ -41,7 +48,19 @@ export async function POST(request: Request) {
     return Response.json({ error: "Invalid JSON body." }, { status: 400 });
   }
 
-  const { messages, providerId, modelId, apiKey } = payload;
+  const {
+    messages,
+    providerId,
+    modelId,
+    apiKey,
+    braveSearchKey,
+    searchProvider,
+    serperApiKey,
+    tavilyApiKey,
+    skills,
+    memories,
+    mcpServers,
+  } = payload;
 
   if (!Array.isArray(messages) || !messages.every(isValidMessage)) {
     return Response.json(
@@ -64,11 +83,36 @@ export async function POST(request: Request) {
 
   try {
     const model = resolveLanguageModel({ providerId, modelId, apiKey });
+    
+    // Connect to MCP servers
+    const { getMcpClients } = await import("@/lib/agent/mcp");
+    const mcpClients = mcpServers ? await getMcpClients(mcpServers) : [];
+
+    let dynamicSystemPrompt = AGENT_SYSTEM_PROMPT;
+    
+    if (memories && memories.length > 0) {
+      const memoryList = memories.map(m => `- ${m.fact}`).join("\n");
+      dynamicSystemPrompt += `\n\n<user_memory>\nKamu mengingat beberapa fakta tentang user ini secara permanen dari chat sebelumnya:\n${memoryList}\nGunakan informasi di atas untuk melakukan personalisasi jawabanmu. Jangan beri tahu user bahwa kamu "mengingat dari memori", cukup langsung gunakan faktanya secara natural.\n</user_memory>`;
+    }
+
+    if (skills && skills.length > 0) {
+      const skillsToc = skills.map(s => `- ${s.name}: ${s.description}`).join("\n");
+      dynamicSystemPrompt += `\n\n<available_skills>\nKamu memiliki koleksi "Skills" (instruksi/konteks khusus) yang dibuat oleh user. Berikut adalah daftarnya:\n${skillsToc}\nJika user meminta sesuatu yang berkaitan dengan skill di atas, gunakan tool \`readSkill\` untuk membaca instruksi lengkapnya SEBELUM kamu memberikan jawaban akhir atau menulis kode.\n</available_skills>`;
+    }
+
+    const orbitTools = await createOrbitTools({
+      searchProvider: searchProvider as any,
+      braveSearchKey,
+      serperApiKey,
+      tavilyApiKey,
+      skills,
+    }, mcpClients);
+
     const result = streamText({
       model,
-      system: AGENT_SYSTEM_PROMPT,
+      system: dynamicSystemPrompt,
       messages: await convertToModelMessages(messages),
-      tools: ORBIT_TOOLS,
+      tools: orbitTools,
       stopWhen: stepCountIs(6),
       temperature: 0.6,
     });

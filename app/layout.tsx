@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 
+import Script from "next/script";
 import { PreferencesApplier } from "@/components/preferences-applier";
 import { Toaster } from "@/components/ui/toaster";
 import { cn } from "@/lib/utils";
@@ -55,7 +56,11 @@ export default function RootLayout({
       )}
     >
       <head>
-        <script dangerouslySetInnerHTML={{ __html: PREFS_BOOTSTRAP }} />
+        <Script
+          id="prefs-bootstrap"
+          strategy="beforeInteractive"
+          dangerouslySetInnerHTML={{ __html: PREFS_BOOTSTRAP }}
+        />
       </head>
       <body
         className="h-full bg-background text-foreground"

@@ -6,6 +6,7 @@ import { persist, createJSONStorage } from "zustand/middleware";
 export type ThemeMode = "system" | "dark" | "light";
 export type AccentColor = "default" | "sky" | "emerald" | "violet" | "amber";
 export type FontSize = "sm" | "md" | "lg";
+export type SearchProvider = "none" | "duckduckgo" | "brave" | "serper" | "tavily";
 
 export type PreferencesState = {
   theme: ThemeMode;
@@ -14,17 +15,31 @@ export type PreferencesState = {
   compactMode: boolean;
   sendOnEnter: boolean;
   reduceMotion: boolean;
-  /** WhatsApp integration (client-side only; see PreferencesDialog for docs). */
-  whatsappNumber: string;
-  whatsappWebhookUrl: string;
+  
+  // Search Settings
+  searchProvider: SearchProvider;
+  braveSearchKey: string;
+  serperApiKey: string;
+  tavilyApiKey: string;
+
+  // Telegram integration
+  telegramBotToken: string;
+  telegramChatId: string;
+
   setTheme: (theme: ThemeMode) => void;
   setAccent: (accent: AccentColor) => void;
   setFontSize: (fontSize: FontSize) => void;
   setCompactMode: (compact: boolean) => void;
   setSendOnEnter: (send: boolean) => void;
   setReduceMotion: (reduce: boolean) => void;
-  setWhatsappNumber: (value: string) => void;
-  setWhatsappWebhookUrl: (value: string) => void;
+  
+  setSearchProvider: (provider: SearchProvider) => void;
+  setBraveSearchKey: (value: string) => void;
+  setSerperApiKey: (value: string) => void;
+  setTavilyApiKey: (value: string) => void;
+  
+  setTelegramBotToken: (value: string) => void;
+  setTelegramChatId: (value: string) => void;
   reset: () => void;
 };
 
@@ -35,8 +50,14 @@ const DEFAULTS = {
   compactMode: false,
   sendOnEnter: true,
   reduceMotion: false,
-  whatsappNumber: "",
-  whatsappWebhookUrl: "",
+  
+  searchProvider: "duckduckgo" as SearchProvider,
+  braveSearchKey: "",
+  serperApiKey: "",
+  tavilyApiKey: "",
+  
+  telegramBotToken: "",
+  telegramChatId: "",
 };
 
 export const usePreferences = create<PreferencesState>()(
@@ -49,15 +70,30 @@ export const usePreferences = create<PreferencesState>()(
       setCompactMode: (compactMode) => set({ compactMode }),
       setSendOnEnter: (sendOnEnter) => set({ sendOnEnter }),
       setReduceMotion: (reduceMotion) => set({ reduceMotion }),
-      setWhatsappNumber: (whatsappNumber) => set({ whatsappNumber }),
-      setWhatsappWebhookUrl: (whatsappWebhookUrl) =>
-        set({ whatsappWebhookUrl }),
+      
+      setSearchProvider: (searchProvider) => set({ searchProvider }),
+      setBraveSearchKey: (braveSearchKey) => set({ braveSearchKey }),
+      setSerperApiKey: (serperApiKey) => set({ serperApiKey }),
+      setTavilyApiKey: (tavilyApiKey) => set({ tavilyApiKey }),
+      
+      setTelegramBotToken: (telegramBotToken) => set({ telegramBotToken }),
+      setTelegramChatId: (telegramChatId) => set({ telegramChatId }),
       reset: () => set(DEFAULTS),
     }),
     {
-      name: "orbit-preferences",
+      name: "orbit-preferences-v5", // Change name to force a clean slate if migration fails
       storage: createJSONStorage(() => localStorage),
-      version: 1,
+      version: 5,
+      migrate: (persistedState: any, version: number) => {
+        if (version === 5) return persistedState as PreferencesState;
+        
+        // Manual merge to ensure no fields are missing
+        const state = { ...DEFAULTS };
+        if (persistedState && typeof persistedState === "object") {
+          Object.assign(state, persistedState);
+        }
+        return state as PreferencesState;
+      },
     },
   ),
 );

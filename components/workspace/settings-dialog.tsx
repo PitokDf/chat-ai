@@ -1,16 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState, useRef } from "react";
 import {
   Check,
   ExternalLink,
   KeyRound,
-  MessageCircle,
   Monitor,
   Moon,
+  Plus,
   RotateCcw,
+  Search,
+  Send,
   Settings as SettingsIcon,
   Sun,
+  Trash2,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -34,8 +37,12 @@ import {
   type AccentColor,
   type FontSize,
   type ThemeMode,
+  type SearchProvider,
 } from "@/lib/store/preferences";
 import { useSettings } from "@/lib/store/settings";
+import { useSkills } from "@/lib/store/skills";
+import { useMemory } from "@/lib/store/memory";
+import { useMcp } from "@/lib/store/mcp";
 import { toast } from "@/lib/store/toast";
 import { cn } from "@/lib/utils";
 
@@ -44,10 +51,10 @@ const THEMES: Array<{
   label: string;
   icon: React.ComponentType<{ className?: string }>;
 }> = [
-  { value: "system", label: "System", icon: Monitor },
-  { value: "dark", label: "Dark", icon: Moon },
-  { value: "light", label: "Light", icon: Sun },
-];
+    { value: "system", label: "System", icon: Monitor },
+    { value: "dark", label: "Dark", icon: Moon },
+    { value: "light", label: "Light", icon: Sun },
+  ];
 
 const FONT_SIZES: Array<{ value: FontSize; label: string; sample: string }> = [
   { value: "sm", label: "Small", sample: "14 px" },
@@ -96,7 +103,7 @@ export function SettingsDialog() {
           <span className="hidden lg:inline">Settings</span>
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-3xl">
         <DialogHeader>
           <DialogTitle>Settings</DialogTitle>
           <DialogDescription>
@@ -105,15 +112,27 @@ export function SettingsDialog() {
         </DialogHeader>
 
         <Tabs defaultValue="keys" className="gap-4">
-          <TabsList className="self-start">
+          <TabsList className="h-auto flex-wrap justify-start gap-1">
             <TabsTrigger value="keys" className="gap-1.5">
               <KeyRound className="h-3 w-3" /> API keys
             </TabsTrigger>
             <TabsTrigger value="prefs" className="gap-1.5">
               <SettingsIcon className="h-3 w-3" /> Preferences
             </TabsTrigger>
+            <TabsTrigger value="search" className="gap-1.5">
+              <Search className="h-3 w-3" /> Search
+            </TabsTrigger>
+            <TabsTrigger value="skills" className="gap-1.5">
+              <SettingsIcon className="h-3 w-3" /> Skills Library
+            </TabsTrigger>
+            <TabsTrigger value="memory" className="gap-1.5">
+              <Monitor className="h-3 w-3" /> Memory
+            </TabsTrigger>
+            <TabsTrigger value="mcp" className="gap-1.5">
+              <ExternalLink className="h-3 w-3" /> MCP Servers
+            </TabsTrigger>
             <TabsTrigger value="integrations" className="gap-1.5">
-              <MessageCircle className="h-3 w-3" /> Integrations
+              <Send className="h-3 w-3" /> Integrations
             </TabsTrigger>
           </TabsList>
 
@@ -331,6 +350,22 @@ export function SettingsDialog() {
             </div>
           </TabsContent>
 
+          <TabsContent value="search" className="outline-none">
+            <SearchPanel />
+          </TabsContent>
+
+          <TabsContent value="skills" className="outline-none">
+            <SkillsPanel />
+          </TabsContent>
+
+          <TabsContent value="memory" className="outline-none">
+            <MemoryPanel />
+          </TabsContent>
+
+          <TabsContent value="mcp" className="outline-none">
+            <McpPanel />
+          </TabsContent>
+
           <TabsContent value="integrations" className="outline-none">
             <IntegrationsPanel />
           </TabsContent>
@@ -362,78 +397,551 @@ function PreferenceRow({
   );
 }
 
-function IntegrationsPanel() {
-  const whatsappNumber = usePreferences((s) => s.whatsappNumber);
-  const whatsappWebhookUrl = usePreferences((s) => s.whatsappWebhookUrl);
-  const setWhatsappNumber = usePreferences((s) => s.setWhatsappNumber);
-  const setWhatsappWebhookUrl = usePreferences((s) => s.setWhatsappWebhookUrl);
+function SearchPanel() {
+  const {
+    searchProvider,
+    setSearchProvider,
+    braveSearchKey,
+    setBraveSearchKey,
+    serperApiKey,
+    setSerperApiKey,
+    tavilyApiKey,
+    setTavilyApiKey,
+  } = usePreferences();
 
-  const cleanNumber = whatsappNumber.replace(/\D/g, "");
-  const deepLink = cleanNumber ? `https://wa.me/${cleanNumber}` : "";
+  return (
+    <div className="flex max-h-[60vh] flex-col gap-6 overflow-y-auto pr-1">
+      <div className="flex flex-col gap-2">
+        <Label>Search Provider</Label>
+        <select
+          value={searchProvider}
+          onChange={(e) => setSearchProvider(e.target.value as SearchProvider)}
+          className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <option value="none">None (disabled)</option>
+          <option value="duckduckgo">DuckDuckGo — Free, no key</option>
+          <option value="brave">Brave Search — 2,000 req/mo free</option>
+          <option value="serper">Serper (Google) — 2,500 req free</option>
+          <option value="tavily">Tavily — 1,000 req/mo free</option>
+        </select>
+      </div>
+
+      <div className="flex flex-col gap-4">
+        {searchProvider === "brave" && (
+          <div className="rounded-lg border border-border bg-muted/20 p-3">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="brave-key">Brave API Key</Label>
+              <a href="https://api.search.brave.com/" target="_blank" rel="noreferrer" className="text-[10px] text-muted-foreground hover:underline">Get Key</a>
+            </div>
+            <Input
+              id="brave-key"
+              type="password"
+              className="mt-2"
+              placeholder="BSA..."
+              value={braveSearchKey}
+              onChange={(e) => setBraveSearchKey(e.target.value)}
+            />
+          </div>
+        )}
+
+        {searchProvider === "serper" && (
+          <div className="rounded-lg border border-border bg-muted/20 p-3">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="serper-key">Serper (Google) API Key</Label>
+              <a href="https://serper.dev/" target="_blank" rel="noreferrer" className="text-[10px] text-muted-foreground hover:underline">Get Key</a>
+            </div>
+            <Input
+              id="serper-key"
+              type="password"
+              className="mt-2"
+              placeholder="API Key..."
+              value={serperApiKey}
+              onChange={(e) => setSerperApiKey(e.target.value)}
+            />
+          </div>
+        )}
+
+        {searchProvider === "tavily" && (
+          <div className="rounded-lg border border-border bg-muted/20 p-3">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="tavily-key">Tavily API Key</Label>
+              <a href="https://tavily.com/" target="_blank" rel="noreferrer" className="text-[10px] text-muted-foreground hover:underline">Get Key</a>
+            </div>
+            <Input
+              id="tavily-key"
+              type="password"
+              className="mt-2"
+              placeholder="tvly-..."
+              value={tavilyApiKey}
+              onChange={(e) => setTavilyApiKey(e.target.value)}
+            />
+          </div>
+        )}
+      </div>
+
+      <p className="text-[11px] text-muted-foreground italic">
+        * DuckDuckGo uses a robust parallel fallback system (SearXNG + Marginalia) and requires no configuration.
+      </p>
+    </div>
+  );
+}
+
+function IntegrationsPanel() {
+  const telegramBotToken = usePreferences((s) => s.telegramBotToken);
+  const telegramChatId = usePreferences((s) => s.telegramChatId);
+  const setTelegramBotToken = usePreferences((s) => s.setTelegramBotToken);
+  const setTelegramChatId = usePreferences((s) => s.setTelegramChatId);
+
+  const testLink =
+    telegramBotToken && telegramChatId
+      ? `https://api.telegram.org/bot${telegramBotToken}/getChat?chat_id=${telegramChatId}`
+      : "";
 
   return (
     <div className="flex max-h-[60vh] flex-col gap-4 overflow-y-auto pr-1">
       <div className="rounded-lg border border-border bg-muted/20 p-3">
         <div className="flex items-center gap-2">
-          <MessageCircle className="h-4 w-4 text-emerald-500" />
-          <p className="text-sm font-medium text-foreground">WhatsApp</p>
+          <Send className="h-4 w-4 text-sky-400" />
+          <p className="text-sm font-medium text-foreground">Telegram</p>
         </div>
         <p className="mt-1 text-[11px] text-muted-foreground">
-          Connect Orbit to WhatsApp. You can share chat replies as a WhatsApp
-          message or forward them to a webhook (e.g. n8n, Zapier, Make) that
-          posts to the WhatsApp Cloud API.
+          Forward assistant replies to a Telegram chat. Create a bot with
+          @BotFather, add it to your group or DM it,kemudian masukkan credential di bawah.
         </p>
 
         <div className="mt-3 flex flex-col gap-3">
           <div className="flex flex-col gap-1">
-            <Label htmlFor="wa-number">Your WhatsApp number</Label>
+            <Label htmlFor="tg-token">Bot Token</Label>
             <Input
-              id="wa-number"
-              placeholder="+62 812 3456 7890"
-              value={whatsappNumber}
-              onChange={(event) => setWhatsappNumber(event.target.value)}
+              id="tg-token"
+              type="password"
+              placeholder="123456:ABC-DEF..."
+              value={telegramBotToken}
+              onChange={(event) => setTelegramBotToken(event.target.value)}
             />
-            <p className="text-[10px] text-muted-foreground">
-              Include country code. Used to build wa.me deep-links.
-            </p>
           </div>
           <div className="flex flex-col gap-1">
-            <Label htmlFor="wa-webhook">Webhook URL (optional)</Label>
+            <Label htmlFor="tg-chat">Chat ID</Label>
             <Input
-              id="wa-webhook"
-              placeholder="https://n8n.example.com/webhook/orbit"
-              value={whatsappWebhookUrl}
-              onChange={(event) => setWhatsappWebhookUrl(event.target.value)}
+              id="tg-chat"
+              placeholder="e.g. 12345678"
+              value={telegramChatId}
+              onChange={(event) => setTelegramChatId(event.target.value)}
             />
-            <p className="text-[10px] text-muted-foreground">
-              The chat panel adds a &quot;Send to WhatsApp&quot; action on
-              assistant messages. It POSTs JSON{" "}
-              <code className="rounded bg-muted/60 px-1 py-0.5 text-[10px]">
-                {"{ to, message }"}
-              </code>{" "}
-              to your webhook. Point it at any WhatsApp integration service.
-            </p>
           </div>
-          {deepLink ? (
+          {testLink && (
             <a
-              href={deepLink}
+              href={testLink}
               target="_blank"
               rel="noreferrer"
               className="inline-flex w-fit items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
             >
-              Test link: {deepLink} <ExternalLink className="h-3 w-3" />
+              Test connection <ExternalLink className="h-3 w-3" />
             </a>
-          ) : null}
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SkillsPanel() {
+  const skills = useSkills((s) => s.skills);
+  const addSkill = useSkills((s) => s.addSkill);
+  const updateSkill = useSkills((s) => s.updateSkill);
+  const deleteSkill = useSkills((s) => s.deleteSkill);
+
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draftName, setDraftName] = useState("");
+  const [draftDesc, setDraftDesc] = useState("");
+  const [draftContent, setDraftContent] = useState("");
+
+  const handleAddNew = () => {
+    const id = Date.now().toString(); // temporary ID just for state
+    setEditingId("new");
+    setDraftName("");
+    setDraftDesc("");
+    setDraftContent("");
+  };
+
+  const handleEdit = (skill: any) => {
+    setEditingId(skill.id);
+    setDraftName(skill.name);
+    setDraftDesc(skill.description);
+    setDraftContent(skill.content);
+  };
+
+  const handleSave = () => {
+    if (!draftName.trim() || !draftContent.trim()) {
+      toast.error("Name and Content are required.");
+      return;
+    }
+
+    if (editingId === "new") {
+      addSkill({ name: draftName, description: draftDesc, content: draftContent });
+      toast.success("Skill added.");
+    } else if (editingId) {
+      updateSkill(editingId, { name: draftName, description: draftDesc, content: draftContent });
+      toast.success("Skill updated.");
+    }
+
+    setEditingId(null);
+  };
+
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleImportMarkdown = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target?.result as string;
+      if (!text) return;
+
+      // Coba parse YAML Frontmatter (--- ... ---)
+      const yamlMatch = text.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)/);
+      let importedCount = 0;
+
+      if (yamlMatch) {
+        const frontmatter = yamlMatch[1];
+        const content = yamlMatch[2].trim();
+
+        let name = "Skill Baru";
+        let description = "Skill diimpor dari markdown";
+
+        const nameMatch = frontmatter.match(/^name:\s*(.+)/m);
+        if (nameMatch) name = nameMatch[1].trim();
+
+        const descMatch = frontmatter.match(/^description:\s*(.+)/m);
+        if (descMatch) description = descMatch[1].trim();
+
+        if (name && content) {
+          addSkill({ name, description, content });
+          importedCount++;
+        }
+      } else {
+        // Fallback: split by headings jika tidak ada frontmatter
+        const sections = text.split(/(?:^|\n)##? /);
+        for (const section of sections) {
+          if (!section.trim()) continue;
+          const lines = section.split("\n");
+          const name = lines[0].trim();
+          const content = lines.slice(1).join("\n").trim();
+
+          if (name && content) {
+            addSkill({
+              name,
+              description: "Diimpor dari file SKILL.md",
+              content,
+            });
+            importedCount++;
+          }
+        }
+      }
+
+      if (importedCount > 0) {
+        toast.success(`Berhasil mengimpor ${importedCount} skill!`);
+      } else {
+        toast.error("Gagal mendeteksi skill. Pastikan format SKILL.md benar (menggunakan frontmatter).");
+      }
+
+      // Reset input
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    };
+    reader.readAsText(file);
+  };
+
+  return (
+    <div className="flex max-h-[60vh] flex-col gap-4 overflow-y-auto pr-1">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-medium text-foreground">Your Skills Library</p>
+        <div className="flex items-center gap-2">
+          <input
+            type="file"
+            accept=".md, .txt"
+            ref={fileInputRef}
+            className="hidden"
+            onChange={handleImportMarkdown}
+          />
+          <Button size="sm" variant="outline" onClick={() => fileInputRef.current?.click()} className="gap-1.5 h-7 text-xs">
+            Import .md
+          </Button>
+          <Button size="sm" onClick={handleAddNew} disabled={editingId !== null} className="gap-1.5 h-7 text-xs">
+            <Plus className="h-3.5 w-3.5" /> Add Skill
+          </Button>
         </div>
       </div>
 
-      <p className="text-[10.5px] leading-5 text-muted-foreground">
-        Want a fully automated bot? Host a WhatsApp Business Cloud webhook,
-        forward inbound messages to{" "}
-        <code className="rounded bg-muted/60 px-1">/api/chat</code>, and post
-        the reply back through Cloud API or a library like Baileys. That piece
-        lives outside Orbit.
+      <p className="text-[11px] text-muted-foreground mt-[-8px]">
+        Create custom instructions or persona rules. The AI will automatically search and read these skills when your prompt requires them. Format import SKILL.md: Gunakan heading (# Nama Skill) lalu konten di bawahnya.
       </p>
+
+      {editingId !== null && (
+        <div className="rounded-lg border border-border bg-muted/20 p-4 flex flex-col gap-3">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="skill-name" className="text-xs">Skill Name</Label>
+            <Input id="skill-name" value={draftName} onChange={(e) => setDraftName(e.target.value)} placeholder="e.g. React Best Practices" className="h-8 text-sm" />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="skill-desc" className="text-xs">Short Description (for AI to know when to use it)</Label>
+            <Input id="skill-desc" value={draftDesc} onChange={(e) => setDraftDesc(e.target.value)} placeholder="e.g. Rules for writing React components" className="h-8 text-sm" />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="skill-content" className="text-xs">Full Instructions / Content</Label>
+            <textarea id="skill-content" value={draftContent} onChange={(e) => setDraftContent(e.target.value)} placeholder="Type your detailed instructions here..." className="min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" />
+          </div>
+          <div className="flex justify-end gap-2 mt-2">
+            <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>Cancel</Button>
+            <Button size="sm" onClick={handleSave}>Save Skill</Button>
+          </div>
+        </div>
+      )}
+
+      {editingId === null && skills.length === 0 && (
+        <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+          No skills defined yet.
+        </div>
+      )}
+
+      {editingId === null && skills.length > 0 && (
+        <div className="flex flex-col gap-2">
+          {skills.map((skill) => (
+            <div key={skill.id} className="group relative rounded-lg border border-border bg-card p-3 shadow-sm transition hover:border-foreground/20">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-sm font-medium text-foreground">{skill.name}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{skill.description}</p>
+                </div>
+                <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                  <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleEdit(skill)}>
+                    <SettingsIcon className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => { if (confirm("Delete this skill?")) deleteSkill(skill.id); }}>
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MemoryPanel() {
+  const memories = useMemory((s) => s.memories);
+  const addMemory = useMemory((s) => s.addMemory);
+  const updateMemory = useMemory((s) => s.updateMemory);
+  const deleteMemory = useMemory((s) => s.deleteMemory);
+  const clearMemories = useMemory((s) => s.clearMemories);
+
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draftFact, setDraftFact] = useState("");
+
+  const handleAddNew = () => {
+    setEditingId("new");
+    setDraftFact("");
+  };
+
+  const handleEdit = (memory: any) => {
+    setEditingId(memory.id);
+    setDraftFact(memory.fact);
+  };
+
+  const handleSave = () => {
+    if (!draftFact.trim()) {
+      toast.error("Fact is required.");
+      return;
+    }
+
+    if (editingId === "new") {
+      addMemory(draftFact);
+      toast.success("Memory added.");
+    } else if (editingId) {
+      updateMemory(editingId, draftFact);
+      toast.success("Memory updated.");
+    }
+
+    setEditingId(null);
+  };
+
+  return (
+    <div className="flex max-h-[60vh] flex-col gap-4 overflow-y-auto pr-1">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-medium text-foreground">AI Memory</p>
+        <div className="flex gap-2">
+          {memories.length > 0 && (
+            <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => { if (confirm("Hapus semua memori? AI tidak akan mengingat apapun lagi.")) clearMemories(); }}>
+              Clear All
+            </Button>
+          )}
+          <Button size="sm" onClick={handleAddNew} disabled={editingId !== null} className="gap-1.5 h-7 text-xs">
+            <Plus className="h-3.5 w-3.5" /> Add Memory
+          </Button>
+        </div>
+      </div>
+
+      <p className="text-[11px] text-muted-foreground mt-[-8px]">
+        AI secara otomatis menyimpan fakta penting tentang Anda dari percakapan untuk memberi jawaban yang lebih personal. Anda bisa mengedit atau menghapusnya di sini.
+      </p>
+
+      {editingId !== null && (
+        <div className="rounded-lg border border-border bg-muted/20 p-4 flex flex-col gap-3">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="memory-fact" className="text-xs">Fakta / Preferensi</Label>
+            <Input id="memory-fact" value={draftFact} onChange={(e) => setDraftFact(e.target.value)} placeholder="e.g. Nama saya adalah Budi..." className="h-8 text-sm" />
+          </div>
+          <div className="flex justify-end gap-2 mt-2">
+            <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>Cancel</Button>
+            <Button size="sm" onClick={handleSave}>Save</Button>
+          </div>
+        </div>
+      )}
+
+      {editingId === null && memories.length === 0 && (
+        <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+          Belum ada memori. AI akan menambahkannya otomatis dari percakapan.
+        </div>
+      )}
+
+      {editingId === null && memories.length > 0 && (
+        <div className="flex flex-col gap-2">
+          {memories.slice().sort((a, b) => b.createdAt - a.createdAt).map((memory) => (
+            <div key={memory.id} className="group relative rounded-lg border border-border bg-card p-3 shadow-sm transition hover:border-foreground/20">
+              <div className="flex items-start justify-between gap-4">
+                <p className="text-sm font-medium text-foreground">{memory.fact}</p>
+                <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                  <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleEdit(memory)}>
+                    <SettingsIcon className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => { if (confirm("Hapus memori ini?")) deleteMemory(memory.id); }}>
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function McpPanel() {
+  const servers = useMcp((s) => s.servers);
+  const addServer = useMcp((s) => s.addServer);
+  const updateServer = useMcp((s) => s.updateServer);
+  const deleteServer = useMcp((s) => s.deleteServer);
+  const toggleServer = useMcp((s) => s.toggleServer);
+
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draftName, setDraftName] = useState("");
+  const [draftCommand, setDraftCommand] = useState("");
+  const [draftArgs, setDraftArgs] = useState("");
+
+  const handleAddNew = () => {
+    setEditingId("new");
+    setDraftName("");
+    setDraftCommand("npx");
+    setDraftArgs("-y @modelcontextprotocol/server-postgres postgresql://localhost/mydb");
+  };
+
+  const handleEdit = (server: any) => {
+    setEditingId(server.id);
+    setDraftName(server.name);
+    setDraftCommand(server.command);
+    setDraftArgs(server.args.join(" "));
+  };
+
+  const handleSave = () => {
+    if (!draftName.trim() || !draftCommand.trim()) {
+      toast.error("Name and Command are required.");
+      return;
+    }
+
+    // Parse args simply by splitting by space (doesn't handle quotes yet)
+    const argsArray = draftArgs.split(" ").map(s => s.trim()).filter(s => s.length > 0);
+
+    if (editingId === "new") {
+      addServer({ name: draftName, command: draftCommand, args: argsArray, env: {}, active: true });
+      toast.success("MCP Server added.");
+    } else if (editingId) {
+      updateServer(editingId, { name: draftName, command: draftCommand, args: argsArray });
+      toast.success("MCP Server updated.");
+    }
+
+    setEditingId(null);
+  };
+
+  return (
+    <div className="flex max-h-[60vh] flex-col gap-4 overflow-y-auto pr-1">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-medium text-foreground">MCP Servers</p>
+        <Button size="sm" onClick={handleAddNew} disabled={editingId !== null} className="gap-1.5 h-7 text-xs">
+          <Plus className="h-3.5 w-3.5" /> Add Server
+        </Button>
+      </div>
+
+      <p className="text-[11px] text-muted-foreground mt-[-8px]">
+        Model Context Protocol (MCP) allows AI to securely access local tools and data via stdio servers.
+      </p>
+
+      {editingId !== null && (
+        <div className="rounded-lg border border-border bg-muted/20 p-4 flex flex-col gap-3">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="mcp-name" className="text-xs">Server Name</Label>
+            <Input id="mcp-name" value={draftName} onChange={(e) => setDraftName(e.target.value)} placeholder="e.g. Postgres DB" className="h-8 text-sm" />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="mcp-command" className="text-xs">Command</Label>
+            <Input id="mcp-command" value={draftCommand} onChange={(e) => setDraftCommand(e.target.value)} placeholder="e.g. npx" className="h-8 text-sm" />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="mcp-args" className="text-xs">Arguments (space separated)</Label>
+            <Input id="mcp-args" value={draftArgs} onChange={(e) => setDraftArgs(e.target.value)} placeholder="e.g. -y @modelcontextprotocol/server-postgres" className="h-8 text-sm" />
+          </div>
+          <div className="flex justify-end gap-2 mt-2">
+            <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>Cancel</Button>
+            <Button size="sm" onClick={handleSave}>Save</Button>
+          </div>
+        </div>
+      )}
+
+      {editingId === null && servers.length === 0 && (
+        <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+          No MCP servers added yet.
+        </div>
+      )}
+
+      {editingId === null && servers.length > 0 && (
+        <div className="flex flex-col gap-2">
+          {servers.map((server) => (
+            <div key={server.id} className="group relative rounded-lg border border-border bg-card p-3 shadow-sm transition hover:border-foreground/20">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium text-foreground">{server.name}</p>
+                    <Switch checked={server.active} onCheckedChange={(checked) => toggleServer(server.id, checked)} className="scale-75 origin-left" />
+                  </div>
+                  <p className="mt-0.5 text-xs text-muted-foreground font-mono bg-muted/50 p-1 rounded inline-block">
+                    {server.command} {server.args.join(" ")}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                  <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleEdit(server)}>
+                    <SettingsIcon className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => { if (confirm("Delete this MCP server?")) deleteServer(server.id); }}>
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

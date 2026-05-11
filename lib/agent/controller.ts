@@ -7,6 +7,7 @@ import { ArtifactStreamParser, type ParsedAction } from "@/lib/agent/parser";
 import { useChat, type ChatMessage } from "@/lib/store/chat";
 import { saveMessage, useProject } from "@/lib/store/project";
 import { selectCurrentKey, useSettings } from "@/lib/store/settings";
+import { usePreferences } from "@/lib/store/preferences";
 import type { ProviderId } from "@/lib/providers";
 
 type UIMessagePart =
@@ -153,16 +154,27 @@ export const sendChatMessage = async ({ text, attachments }: SendOptions) => {
 
   let response: Response;
   try {
-    response = await fetch("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        providerId,
-        modelId,
-        apiKey,
-        messages: historyForModel,
-      }),
-    });
+      const prefs = usePreferences.getState();
+      const { skills } = await import("@/lib/store/skills").then((m) => m.useSkills.getState());
+      const { memories } = await import("@/lib/store/memory").then((m) => m.useMemory.getState());
+      const { servers } = await import("@/lib/store/mcp").then((m) => m.useMcp.getState());
+      response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          providerId,
+          modelId,
+          apiKey,
+          searchProvider: prefs.searchProvider,
+          braveSearchKey: prefs.braveSearchKey || undefined,
+          serperApiKey: prefs.serperApiKey || undefined,
+          tavilyApiKey: prefs.tavilyApiKey || undefined,
+          skills: skills || [],
+          memories: memories || [],
+          mcpServers: servers?.filter((s) => s.active) || [],
+          messages: historyForModel,
+        }),
+      });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Network error.";
     useChat.getState().updateMessage(assistantId, (m) => ({
@@ -369,6 +381,17 @@ export const sendChatMessage = async ({ text, attachments }: SendOptions) => {
         const output = event.output as { error?: string } | unknown;
         const hasError =
           output && typeof output === "object" && "error" in output;
+          
+        // INTERCEPTOR: Jika AI berhasil memanggil saveMemory, simpan ke lokal
+        if (event.toolName === "saveMemory" && !hasError) {
+          const resultObj = output as { savedFact?: string };
+          if (resultObj?.savedFact) {
+            import("@/lib/store/memory").then((m) => {
+              m.useMemory.getState().addMemory(resultObj.savedFact as string);
+            });
+          }
+        }
+
         useChat.getState().updateMessage(assistantId, (m) => ({
           ...m,
           toolCalls: m.toolCalls.map((t) =>
