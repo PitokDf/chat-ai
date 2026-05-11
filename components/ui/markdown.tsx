@@ -307,6 +307,8 @@ const sanitizeSchema = {
   ],
 };
 
+// 
+
 const createComponents = () => ({
   h1: ({
     className,
