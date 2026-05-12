@@ -185,6 +185,15 @@ export const tryMountNodeModulesSnapshot = async (
       // ignore: already present
     }
     await wc.mount(record.payload, { mountPoint: "node_modules" });
+
+    // Fix permissions for .bin executables to avoid EACCES errors on dev server restart
+    try {
+      const p = await wc.spawn("jsh", ["-c", "chmod -R +x node_modules/.bin"]);
+      await p.exit;
+    } catch {
+      // ignore
+    }
+
     return true;
   } catch {
     return false;

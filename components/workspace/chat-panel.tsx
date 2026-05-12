@@ -175,6 +175,25 @@ const MessageBlockInner = ({ message }: { message: ChatMessage }) => {
         ) : message.status === "streaming" ? (
           <span className="text-muted-foreground">...</span>
         ) : null}
+
+        {message.thought && message.thought.trim().length > 0 && (
+          <details className="mt-2 text-xs opacity-75">
+            <summary className="cursor-pointer text-muted-foreground font-semibold hover:opacity-100 transition-opacity">
+              Analyzed thought process
+            </summary>
+            <div className="mt-2 p-2 bg-background/50 rounded text-muted-foreground text-opacity-80">
+              <Markdown content={message.thought.trim()} compact />
+            </div>
+          </details>
+        )}
+
+        {(message.toolCalls ?? []).length > 0 ? (
+          <div className="mt-3 w-full space-y-2">
+            {(message.toolCalls ?? []).map((call) => (
+              <ToolCallView key={call.id} call={call} />
+            ))}
+          </div>
+        ) : null}
       </div>
       {canShare && (telegramBotToken || telegramChatId) ? (
         <button
@@ -185,13 +204,6 @@ const MessageBlockInner = ({ message }: { message: ChatMessage }) => {
           <Send className="h-3 w-3" />
           Send to Telegram
         </button>
-      ) : null}
-      {(message.toolCalls ?? []).length > 0 ? (
-        <div className="w-full max-w-[92%] space-y-1.5">
-          {(message.toolCalls ?? []).map((call) => (
-            <ToolCallView key={call.id} call={call} />
-          ))}
-        </div>
       ) : null}
       {message.artifacts.length > 0 ? (
         <div className="w-full max-w-[92%] space-y-1.5">

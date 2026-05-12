@@ -158,6 +158,11 @@ export async function POST(request: Request) {
         try {
           for await (const part of result.fullStream) {
             switch (part.type) {
+              case "reasoning-delta":
+                if (part.text) {
+                  writeEvent(controller, { kind: "thought", text: part.text });
+                }
+                break;
               case "text-delta":
                 if (part.text) {
                   writeEvent(controller, { kind: "text", text: part.text });

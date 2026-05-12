@@ -74,6 +74,7 @@ const summarizeForTitle = (text: string) => {
 
 type StreamEvent =
   | { kind: "text"; text: string }
+  | { kind: "thought"; text: string }
   | { kind: "tool-start"; id: string; toolName: string }
   | { kind: "tool-call"; id: string; toolName: string; input?: unknown }
   | {
@@ -154,27 +155,33 @@ export const sendChatMessage = async ({ text, attachments }: SendOptions) => {
 
   let response: Response;
   try {
-      const prefs = usePreferences.getState();
-      const { skills } = await import("@/lib/store/skills").then((m) => m.useSkills.getState());
-      const { memories } = await import("@/lib/store/memory").then((m) => m.useMemory.getState());
-      const { servers } = await import("@/lib/store/mcp").then((m) => m.useMcp.getState());
-      response = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          providerId,
-          modelId,
-          apiKey,
-          searchProvider: prefs.searchProvider,
-          braveSearchKey: prefs.braveSearchKey || undefined,
-          serperApiKey: prefs.serperApiKey || undefined,
-          tavilyApiKey: prefs.tavilyApiKey || undefined,
-          skills: skills || [],
-          memories: memories || [],
-          mcpServers: servers?.filter((s) => s.active) || [],
-          messages: historyForModel,
-        }),
-      });
+    const prefs = usePreferences.getState();
+    const { skills } = await import("@/lib/store/skills").then((m) =>
+      m.useSkills.getState(),
+    );
+    const { memories } = await import("@/lib/store/memory").then((m) =>
+      m.useMemory.getState(),
+    );
+    const { servers } = await import("@/lib/store/mcp").then((m) =>
+      m.useMcp.getState(),
+    );
+    response = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        providerId,
+        modelId,
+        apiKey,
+        searchProvider: prefs.searchProvider,
+        braveSearchKey: prefs.braveSearchKey || undefined,
+        serperApiKey: prefs.serperApiKey || undefined,
+        tavilyApiKey: prefs.tavilyApiKey || undefined,
+        skills: skills || [],
+        memories: memories || [],
+        mcpServers: servers?.filter((s) => s.active) || [],
+        messages: historyForModel,
+      }),
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Network error.";
     useChat.getState().updateMessage(assistantId, (m) => ({
@@ -334,6 +341,12 @@ export const sendChatMessage = async ({ text, attachments }: SendOptions) => {
       case "text":
         applyArtifactEvents(parser.push(event.text));
         break;
+      case "thought":
+        useChat.getState().updateMessage(assistantId, (m) => ({
+          ...m,
+          thought: (m.thought || "") + event.text,
+        }));
+        break;
       case "tool-start":
         useChat.getState().updateMessage(assistantId, (m) => {
           if (m.toolCalls.some((t) => t.id === event.id)) return m;
@@ -381,7 +394,7 @@ export const sendChatMessage = async ({ text, attachments }: SendOptions) => {
         const output = event.output as { error?: string } | unknown;
         const hasError =
           output && typeof output === "object" && "error" in output;
-          
+
         // INTERCEPTOR: Jika AI berhasil memanggil saveMemory, simpan ke lokal
         if (event.toolName === "saveMemory" && !hasError) {
           const resultObj = output as { savedFact?: string };

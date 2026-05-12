@@ -726,20 +726,19 @@ export const financialSentimentTool = tool({
   }),
   execute: async ({ symbol }) =>
     safe(async () => {
-      // Proxying DuckDuckGo news search to get sentiment context
+      // Using Google News RSS to get sentiment context
       const res = await fetch(
-        `https://html.duckduckgo.com/html/?q=${encodeURIComponent(symbol + " stock news")}`,
+        `https://news.google.com/rss/search?q=${encodeURIComponent(symbol + " stock")}&hl=en-US&gl=US&ceid=US:en`,
       );
-      if (!res.ok) throw new Error("News search failed");
-      const html = await res.text();
-      // Extremely basic extraction (simulated response parsing for AI context)
-      const snippets = html
-        .split('class="result__snippet"')
-        .slice(1, 6)
-        .map((s) => {
-          const textObj = s.split(">")[1].split("<")[0];
-          return textObj;
-        });
+      if (!res.ok) throw new Error("News search failed: " + res.status);
+      const text = await res.text();
+      const items = text.match(/<item>[\s\S]*?<\/item>/g) || [];
+
+      const snippets = items
+        .slice(0, 5)
+        .map((item) => item.match(/<title>(.*?)<\/title>/)?.[1] || "")
+        .filter(Boolean);
+
       return {
         symbol,
         sentimentContext: snippets.length
@@ -748,6 +747,76 @@ export const financialSentimentTool = tool({
         instructions:
           "Analyze the sentimentContext strictly to determine if it's Bullish, Neutral, or Bearish.",
       };
+    }),
+});
+
+export const globalMarketsTool = tool({
+  description:
+    "Get prices for global indices (e.g., ^JKSE, ^DJI), Forex, or Commodities (e.g., GC=F).",
+  inputSchema: z.object({
+    symbols: z
+      .array(z.string())
+      .describe(
+        "e.g. ['^JKSE' (IHSG), 'IDR=X' (USD/IDR), 'GC=F' (Gold), 'CL=F' (Oil)]",
+      ),
+  }),
+  execute: async ({ symbols }) =>
+    safe(async () => {
+      const finalQuotes: any[] = [];
+      for (const s of symbols) {
+        const res = await fetchYahooChartQuote(s);
+        if (res) finalQuotes.push(res);
+      }
+      if (finalQuotes.length === 0)
+        throw new Error("No data found for symbols");
+      return { quotes: finalQuotes };
+    }),
+});
+
+export const portfolioManagerTool = tool({
+  description:
+    "Manage a virtual paper trading portfolio. State is maintained per-call, so AI must manage the JSON.",
+  inputSchema: z.object({
+    action: z.enum(["buy", "sell", "view"]),
+    symbol: z.string().optional(),
+    quantity: z.number().optional(),
+    price: z.number().optional(),
+    currentPortfolio: z
+      .any()
+      .describe(
+        "Pass empty object {} to create new. Must contain 'balance' and 'holdings'.",
+      ),
+  }),
+  execute: async ({ action, symbol, quantity, price, currentPortfolio }) =>
+    safe(async () => {
+      let portfolio = currentPortfolio || { balance: 100000, holdings: {} };
+      if (typeof portfolio === "string") portfolio = JSON.parse(portfolio);
+      if (portfolio.balance === undefined) portfolio.balance = 100000;
+      if (!portfolio.holdings) portfolio.holdings = {};
+
+      if (action === "buy" && symbol && quantity && price) {
+        const cost = quantity * price;
+        if (portfolio.balance < cost) throw new Error("Insufficient balance");
+        portfolio.balance -= cost;
+        const holding = portfolio.holdings[symbol] || {
+          quantity: 0,
+          averagePrice: 0,
+        };
+        const totalValue = holding.quantity * holding.averagePrice + cost;
+        holding.quantity += quantity;
+        holding.averagePrice = totalValue / holding.quantity;
+        portfolio.holdings[symbol] = holding;
+        return { status: "success", action: "buy", portfolio };
+      } else if (action === "sell" && symbol && quantity && price) {
+        const holding = portfolio.holdings[symbol];
+        if (!holding || holding.quantity < quantity)
+          throw new Error("Insufficient holding");
+        portfolio.balance += quantity * price;
+        holding.quantity -= quantity;
+        if (holding.quantity === 0) delete portfolio.holdings[symbol];
+        return { status: "success", action: "sell", portfolio };
+      }
+      return { status: "success", action: "view", portfolio };
     }),
 });
 
@@ -798,6 +867,8 @@ export const createOrbitTools = async (
     cryptoTracker: cryptoTrackerTool,
     riskCalculator: riskCalculatorTool,
     fundamentalAnalysis: fundamentalAnalysisTool,
+    globalMarkets: globalMarketsTool,
+    portfolioManager: portfolioManagerTool,
     financialSentiment: financialSentimentTool,
     newsSearch: newsSearchTool,
     webSearch: tool({

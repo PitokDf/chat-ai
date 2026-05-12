@@ -12,6 +12,8 @@ import { WeatherCard } from "./weather-card";
 import { MarketMoversCard } from "./market-movers-card";
 import { CryptoTrackerCard } from "./crypto-tracker-card";
 import { RiskCalculatorCard } from "./risk-calculator-card";
+import { GlobalMarketsCard } from "./global-markets-card";
+import { PortfolioManagerCard } from "./portfolio-manager-card";
 import {
   CalculatorCard,
   CurrencyCard,
@@ -28,6 +30,8 @@ const TOOL_LABEL: Record<string, string> = {
   marketMovers: "Market movers",
   cryptoTracker: "Crypto tracker",
   riskCalculator: "Risk calculator",
+  globalMarkets: "Global markets",
+  portfolioManager: "Virtual portfolio",
   fundamentalAnalysis: "Fundamental analysis",
   financialSentiment: "Market sentiment",
   newsSearch: "News",
@@ -53,6 +57,10 @@ const renderCardBody = (call: ChatToolCall) => {
       return <CryptoTrackerCard call={call} />;
     case "riskCalculator":
       return <RiskCalculatorCard call={call} />;
+    case "globalMarkets":
+      return <GlobalMarketsCard call={call} />;
+    case "portfolioManager":
+      return <PortfolioManagerCard call={call} />;
     case "newsSearch":
       return <NewsCard call={call} />;
     case "currency":

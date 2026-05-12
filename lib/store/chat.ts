@@ -47,6 +47,7 @@ export type ChatMessage = {
   id: string;
   role: "user" | "assistant";
   text: string;
+  thought?: string;
   artifacts: ChatArtifact[];
   toolCalls: ChatToolCall[];
   attachments?: ChatAttachment[];
