@@ -30,6 +30,7 @@ export type ChatToolCall = {
   output?: unknown;
   status: ChatToolCallStatus;
   error?: string;
+  args?: string;
 };
 
 export type ChatAttachment = {

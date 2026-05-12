@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ExternalLink, RotateCcw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,21 @@ import { useWorkspace } from "@/lib/store/workspace";
 export function PreviewPane() {
   const previewUrl = useWorkspace((s) => s.previewUrl);
   const status = useWorkspace((s) => s.status);
+  const appendBrowserLog = useWorkspace((s) => s.appendBrowserLog);
   const [nonce, setNonce] = useState(0);
+
+  useEffect(() => {
+    const handleMessage = (e: MessageEvent) => {
+      if (e.data && e.data.type === "BROWSER_CONSOLE") {
+        appendBrowserLog({
+          level: e.data.level,
+          args: e.data.args,
+        });
+      }
+    };
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, [appendBrowserLog]);
 
   return (
     <div className="flex h-full flex-col">

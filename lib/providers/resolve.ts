@@ -56,6 +56,12 @@ export function resolveLanguageModel({
         baseURL: definition.baseURL,
         name: "openrouter",
       }).chat(modelId);
+    case "xiaomimimo":
+      return createOpenAI({
+        apiKey,
+        baseURL: definition.baseURL,
+        name: "xiaomimimo",
+      }).chat(modelId);
     default: {
       const exhaustive: never = providerId;
       throw new Error(`Unhandled provider ${exhaustive as string}`);

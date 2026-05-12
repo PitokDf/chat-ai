@@ -232,12 +232,37 @@ export const executeAction = async (
       if (state.previewBlobUrl) {
         URL.revokeObjectURL(state.previewBlobUrl);
       }
-      const blob = new Blob([content], { type: "text/html" });
+
+      const scriptToInject = `<script>
+        ['log','info','warn','error'].forEach(m => {
+          const orig = console[m];
+          console[m] = function(...args) {
+            window.parent.postMessage({ type: 'BROWSER_CONSOLE', level: m, args: args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)) }, '*');
+            orig.apply(console, args);
+          };
+        });
+        window.onerror = function(msg, url, line, col, error) {
+          window.parent.postMessage({ type: 'BROWSER_CONSOLE', level: 'error', args: [msg] }, '*');
+        };
+      </script>`;
+
+      const htmlWithConsole = content.includes("<head>")
+        ? content.replace("<head>", "<head>" + scriptToInject)
+        : scriptToInject + content;
+
+      const blob = new Blob([htmlWithConsole], { type: "text/html" });
       const url = URL.createObjectURL(blob);
       state.setPreview(url);
       state.setPreviewBlobUrl(url);
       state.setStatus("running");
-      sysLog("Rendered HTML preview.");
+
+      // Save it so the user can view/edit the generated HTML
+      await writeFile("index.html", content);
+      state.upsertFile("index.html", content);
+      await persistFile(projectId, "index.html", content);
+      state.setOpenFile("index.html");
+
+      sysLog("Rendered HTML preview and saved to index.html");
       return { note: "preview" };
     }
   }

@@ -8,6 +8,7 @@ import { FileTree } from "@/components/workspace/file-tree";
 import { PreviewPane } from "@/components/workspace/preview-pane";
 import { TerminalHeader } from "@/components/workspace/terminal-header";
 import { TerminalView } from "@/components/workspace/terminal-view";
+import { BrowserConsoleView } from "@/components/workspace/browser-console";
 import { useWorkspace } from "@/lib/store/workspace";
 
 type View = "code" | "preview";
@@ -46,9 +47,49 @@ export function WorkspacePane() {
           </button>
         </div>
         {view === "code" && openFile ? (
-          <span className="truncate font-mono text-[11px] text-muted-foreground">
-            {openFile}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="truncate font-mono text-[11px] text-muted-foreground">
+              {openFile}
+            </span>
+            {openFile.endsWith(".html") && (
+              <button
+                type="button"
+                onClick={() => {
+                  const state = useWorkspace.getState();
+                  const content = state.files[openFile];
+                  if (!content) return;
+                  if (state.previewBlobUrl) {
+                    URL.revokeObjectURL(state.previewBlobUrl);
+                  }
+                  const scriptToInject = `<script>
+                    ['log','info','warn','error'].forEach(m => {
+                      const orig = console[m];
+                      console[m] = function(...args) {
+                        window.parent.postMessage({ type: 'BROWSER_CONSOLE', level: m, args: args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)) }, '*');
+                        orig.apply(console, args);
+                      };
+                    });
+                    window.onerror = function(msg, url, line, col, error) {
+                      window.parent.postMessage({ type: 'BROWSER_CONSOLE', level: 'error', args: [msg] }, '*');
+                    };
+                  </script>`;
+                  const htmlWithConsole = content.includes("<head>")
+                    ? content.replace("<head>", "<head>" + scriptToInject)
+                    : scriptToInject + content;
+                  const blob = new Blob([htmlWithConsole], {
+                    type: "text/html",
+                  });
+                  const url = URL.createObjectURL(blob);
+                  state.setPreview(url);
+                  state.setPreviewBlobUrl(url);
+                  setView("preview");
+                }}
+                className="inline-flex items-center gap-1 rounded bg-secondary px-2 py-0.5 text-[10px] text-secondary-foreground hover:bg-secondary/80"
+              >
+                <Eye className="h-3 w-3" /> Preview HTML
+              </button>
+            )}
+          </div>
         ) : null}
       </div>
 
@@ -75,11 +116,8 @@ export function WorkspacePane() {
             <div className="flex-1 min-h-0">
               <PreviewPane />
             </div>
-            <div className="h-40 shrink-0 border-t border-border">
-              <TerminalHeader />
-              <div className="h-[calc(100%-26px)]">
-                <TerminalView />
-              </div>
+            <div className="h-44 shrink-0 border-t border-border">
+              <BrowserConsoleView />
             </div>
           </div>
         )}

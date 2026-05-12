@@ -5,7 +5,8 @@ export type ProviderId =
   | "groq"
   | "mistral"
   | "nvidia"
-  | "openrouter";
+  | "openrouter"
+  | "xiaomimimo";
 
 export type ProviderModel = {
   id: string;
@@ -205,6 +206,24 @@ export const PROVIDERS: ProviderDefinition[] = [
         label: "DeepSeek V3.1",
         supportsTools: true,
       },
+    ],
+  },
+  {
+    id: "xiaomimimo",
+    name: "Xiaomi Mimo",
+    description: "Xiaomi Mimo Platform (OpenAI-compatible)",
+    baseURL: "https://api.xiaomimimo.com/v1",
+    kind: "openai-compat",
+    keyUrl: "https://platform.xiaomimimo.com/console/api-keys",
+    models: [
+      { id: "gpt-4o", label: "GPT-4o", supportsTools: true },
+      { id: "gpt-4o-mini", label: "GPT-4o mini", supportsTools: true },
+      {
+        id: "claude-3-5-sonnet-20240620",
+        label: "Claude 3.5 Sonnet",
+        supportsTools: true,
+      },
+      { id: "deepseek-chat", label: "DeepSeek Chat", supportsTools: true },
     ],
   },
 ];

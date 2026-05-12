@@ -23,6 +23,13 @@ export type TerminalLine = {
   at: number;
 };
 
+export type BrowserLog = {
+  id: string;
+  level: "log" | "info" | "warn" | "error";
+  args: string[];
+  at: number;
+};
+
 type WorkspaceState = {
   status: WorkspaceStatus;
   previewUrl: string | null;
@@ -31,6 +38,7 @@ type WorkspaceState = {
   files: Record<string, string>;
   openFile: string | null;
   terminal: TerminalLine[];
+  browserLogs: BrowserLog[];
   devProcess: WebContainerProcess | null;
   currentStart: string | null;
   setStatus: (status: WorkspaceStatus) => void;
@@ -40,6 +48,8 @@ type WorkspaceState = {
   setOpenFile: (path: string | null) => void;
   appendTerminal: (line: Omit<TerminalLine, "id" | "at">) => void;
   clearTerminal: () => void;
+  appendBrowserLog: (log: Omit<BrowserLog, "id" | "at">) => void;
+  clearBrowserLogs: () => void;
   setDevProcess: (
     process: WebContainerProcess | null,
     command?: string | null,
@@ -54,6 +64,7 @@ export const useWorkspace = create<WorkspaceState>((set) => ({
   files: {},
   openFile: null,
   terminal: [],
+  browserLogs: [],
   devProcess: null,
   currentStart: null,
   setStatus: (status) => set({ status }),
@@ -77,6 +88,18 @@ export const useWorkspace = create<WorkspaceState>((set) => ({
       ].slice(-500),
     })),
   clearTerminal: () => set({ terminal: [] }),
+  appendBrowserLog: (log) =>
+    set((state) => ({
+      browserLogs: [
+        ...state.browserLogs,
+        {
+          ...log,
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          at: Date.now(),
+        },
+      ].slice(-500),
+    })),
+  clearBrowserLogs: () => set({ browserLogs: [] }),
   setDevProcess: (process, command) =>
     set({ devProcess: process, currentStart: command ?? null }),
   reset: () =>
@@ -89,6 +112,7 @@ export const useWorkspace = create<WorkspaceState>((set) => ({
         files: {},
         openFile: null,
         terminal: [],
+        browserLogs: [],
         devProcess: null,
         currentStart: null,
       };

@@ -13,6 +13,7 @@ import {
   Terminal,
   X,
   Zap,
+  Eye,
 } from "lucide-react";
 
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
@@ -31,6 +32,7 @@ import { usePreferences } from "@/lib/store/preferences";
 import { selectCurrentKey, useSettings } from "@/lib/store/settings";
 import { toast } from "@/lib/store/toast";
 import { ToolCallView } from "@/components/workspace/tool-cards";
+import { useWorkspace } from "@/lib/store/workspace";
 
 const TEMPLATES = [
   "Build a landing page for a productivity app with Tailwind.",
@@ -121,6 +123,41 @@ const MessageBlockInner = ({ message }: { message: ChatMessage }) => {
         "Telegram failed",
         err instanceof Error ? err.message : "Network error",
       );
+    }
+  };
+
+  const handleActionClick = (action: ChatArtifactAction) => {
+    const ws = useWorkspace.getState();
+    if (action.type === "file" && action.filePath) {
+      ws.setOpenFile(action.filePath);
+      toast.info(`Opened ${action.filePath}`);
+    } else if (action.type === "preview") {
+      const content = action.content;
+      const scriptToInject = `<script>
+        ['log','info','warn','error'].forEach(m => {
+          const orig = console[m];
+          console[m] = function(...args) {
+            window.parent.postMessage({ type: 'BROWSER_CONSOLE', level: m, args: args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)) }, '*');
+            orig.apply(console, args);
+          };
+        });
+        window.onerror = function(msg, url, line, col, error) {
+          window.parent.postMessage({ type: 'BROWSER_CONSOLE', level: 'error', args: [msg] }, '*');
+        };
+      </script>`;
+      const htmlWithConsole = content.includes("<head>")
+        ? content.replace("<head>", "<head>" + scriptToInject)
+        : scriptToInject + content;
+
+      if (ws.previewBlobUrl) {
+        URL.revokeObjectURL(ws.previewBlobUrl);
+      }
+      const blob = new Blob([htmlWithConsole], { type: "text/html" });
+      const url = URL.createObjectURL(blob);
+      ws.setPreview(url);
+      ws.setPreviewBlobUrl(url);
+      ws.setOpenFile("index.html");
+      toast.info("Preview regenerated");
     }
   };
 
@@ -219,7 +256,8 @@ const MessageBlockInner = ({ message }: { message: ChatMessage }) => {
                 {artifact.actions.map((action) => (
                   <li
                     key={action.id}
-                    className="flex items-center justify-between gap-2 rounded-md bg-muted/30 px-2 py-1 text-[11px] text-foreground/80"
+                    onClick={() => handleActionClick(action)}
+                    className="flex items-center justify-between gap-2 rounded-md bg-muted/30 px-2 py-1 text-[11px] text-foreground/80 cursor-pointer hover:bg-muted/50 transition-colors"
                   >
                     <ActionLabel action={action} />
                     <div className="flex items-center gap-1.5">
@@ -237,6 +275,9 @@ const MessageBlockInner = ({ message }: { message: ChatMessage }) => {
                           {action.note}
                         </span>
                       ) : null}
+                      <summary className="text-[10px] text-muted-foreground mr-1 hidden sm:inline-block">
+                        See in Workspace
+                      </summary>
                       <ActionIcon action={action} />
                     </div>
                   </li>
