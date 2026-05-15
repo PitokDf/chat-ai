@@ -764,7 +764,7 @@ function MarkdownImpl({
           components as Components
         }
       >
-        {processedContent}
+        {processedContent + (streaming ? " ▍" : "")}
       </ReactMarkdown>
     </div>
   );

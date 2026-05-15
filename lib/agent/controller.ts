@@ -12,6 +12,7 @@ import type { ProviderId } from "@/lib/providers";
 
 type UIMessagePart =
   | { type: "text"; text: string }
+  | { type: "reasoning"; text: string }
   | { type: "file"; mediaType: string; url: string };
 
 const toUIMessages = (messages: ChatMessage[]) =>
@@ -30,9 +31,25 @@ const toUIMessages = (messages: ChatMessage[]) =>
         }
         parts.push({ type: "text", text: m.text });
       } else {
+        if (m.thought) {
+          parts.push({ type: "reasoning", text: m.thought });
+        }
         parts.push({ type: "text", text: toRawContent(m) });
       }
-      return { id: m.id, role: m.role, parts };
+
+      return {
+        id: m.id,
+        role: m.role,
+        parts,
+        toolInvocations: m.toolCalls.map((tc) => ({
+          state:
+            tc.status === "done" || tc.status === "error" ? "result" : "call",
+          toolCallId: tc.id,
+          toolName: tc.toolName,
+          args: tc.input,
+          result: tc.output || tc.error,
+        })),
+      };
     });
 
 /** Re-serialize assistant messages including artifacts so subsequent turns
@@ -97,6 +114,41 @@ const isStreamEvent = (value: unknown): value is StreamEvent => {
   return typeof kind === "string";
 };
 
+const activeAbortControllers = new Map<string, AbortController>();
+
+export const abortChatMessage = (id: string) => {
+  const controller = activeAbortControllers.get(id);
+  if (controller) {
+    controller.abort();
+    activeAbortControllers.delete(id);
+  }
+};
+
+export const retryChatMessage = async () => {
+  const { messages, setMessages } = useChat.getState();
+  const lastUserIndex = [...messages].reverse().findIndex((m) => m.role === "user");
+  if (lastUserIndex === -1) return;
+
+  const actualIndex = messages.length - 1 - lastUserIndex;
+  const lastUser = messages[actualIndex];
+
+  // Remove everything after the last user message
+  const newMessages = messages.slice(0, actualIndex + 1);
+  setMessages(newMessages);
+
+  // Re-send
+  return sendChatMessage({
+    text: lastUser.text,
+    attachments: lastUser.attachments?.map((a) => ({
+      name: a.name,
+      mimeType: a.mimeType,
+      kind: a.kind,
+      dataUrl: a.dataUrl,
+      size: a.size,
+    })),
+  });
+};
+
 /**
  * Send a user message, stream the reply, and execute any artifact actions.
  */
@@ -153,6 +205,9 @@ export const sendChatMessage = async ({ text, attachments }: SendOptions) => {
     ...useChat.getState().messages.filter((m) => m.id !== assistantId),
   ]);
 
+  const abortController = new AbortController();
+  activeAbortControllers.set(assistantId, abortController);
+
   let response: Response;
   try {
     const prefs = usePreferences.getState();
@@ -168,6 +223,7 @@ export const sendChatMessage = async ({ text, attachments }: SendOptions) => {
     response = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      signal: abortController.signal,
       body: JSON.stringify({
         providerId,
         modelId,
@@ -183,6 +239,15 @@ export const sendChatMessage = async ({ text, attachments }: SendOptions) => {
       }),
     });
   } catch (error) {
+    activeAbortControllers.delete(assistantId);
+    if (error instanceof Error && error.name === "AbortError") {
+      useChat.getState().updateMessage(assistantId, (m) => ({
+        ...m,
+        status: "done",
+        text: m.text + "\n\n[Generation stopped by user]",
+      }));
+      return;
+    }
     const message = error instanceof Error ? error.message : "Network error.";
     useChat.getState().updateMessage(assistantId, (m) => ({
       ...m,
@@ -350,8 +415,14 @@ export const sendChatMessage = async ({ text, attachments }: SendOptions) => {
       case "tool-start":
         useChat.getState().updateMessage(assistantId, (m) => {
           if (m.toolCalls.some((t) => t.id === event.id)) return m;
+          // Insert marker into text for interleaved rendering
+          const textWithMarker = m.text.endsWith("\n")
+            ? m.text + `:::tool-call{id="${event.id}"}\n`
+            : m.text + `\n:::tool-call{id="${event.id}"}\n`;
+
           return {
             ...m,
+            text: textWithMarker,
             toolCalls: [
               ...m.toolCalls,
               {
@@ -477,6 +548,15 @@ export const sendChatMessage = async ({ text, attachments }: SendOptions) => {
     processBuffer(true);
     applyArtifactEvents(parser.finish());
   } catch (error) {
+    activeAbortControllers.delete(assistantId);
+    if (error instanceof Error && error.name === "AbortError") {
+      useChat.getState().updateMessage(assistantId, (m) => ({
+        ...m,
+        status: "done",
+        text: m.text + "\n\n[Generation stopped by user]",
+      }));
+      return;
+    }
     const message = error instanceof Error ? error.message : "Stream failed.";
     useChat.getState().updateMessage(assistantId, (m) => ({
       ...m,
@@ -486,6 +566,7 @@ export const sendChatMessage = async ({ text, attachments }: SendOptions) => {
     throw error;
   }
 
+  activeAbortControllers.delete(assistantId);
   await executing;
 
   useChat.getState().updateMessage(assistantId, (m) => ({

@@ -7,7 +7,7 @@ import {
 
 import { AGENT_SYSTEM_PROMPT } from "@/lib/agent/prompt";
 import { createOrbitTools } from "@/lib/agent/tools";
-import type { ProviderId } from "@/lib/providers";
+import { getProvider, type ProviderId } from "@/lib/providers";
 import { resolveLanguageModel } from "@/lib/providers/resolve";
 
 export const runtime = "nodejs";
@@ -122,6 +122,10 @@ export async function POST(request: Request) {
       dynamicSystemPrompt += `\n\n<available_skills>\nKamu memiliki koleksi "Skills" (instruksi/konteks khusus) yang dibuat oleh user. Berikut adalah daftarnya:\n${skillsToc}\nJika user meminta sesuatu yang berkaitan dengan skill di atas, gunakan tool \`readSkill\` untuk membaca instruksi lengkapnya SEBELUM kamu memberikan jawaban akhir atau menulis kode.\n</available_skills>`;
     }
 
+    const definition = getProvider(providerId as ProviderId);
+    const modelDefinition = definition?.models.find((m) => m.id === modelId);
+    const supportsTools = modelDefinition?.supportsTools ?? true;
+
     const orbitTools = await createOrbitTools(
       {
         searchProvider: searchProvider as any,
@@ -137,7 +141,7 @@ export async function POST(request: Request) {
       model,
       system: dynamicSystemPrompt,
       messages: await convertToModelMessages(messages),
-      tools: orbitTools,
+      tools: supportsTools ? orbitTools : {},
       stopWhen: stepCountIs(6),
       temperature: 0.6,
     });

@@ -223,7 +223,9 @@ export const PROVIDERS: ProviderDefinition[] = [
         label: "Claude 3.5 Sonnet",
         supportsTools: true,
       },
-      { id: "deepseek-chat", label: "DeepSeek Chat", supportsTools: true },
+      { id: "deepseek-chat", label: "DeepSeek Chat", supportsTools: false },
+      { id: "mimo-v2.5-pro", label: "Mimo v2.5 Pro", supportsTools: true },
+      { id: "mimo-v2-flash", label: "Mimo v2 Flash", supportsTools: true },
     ],
   },
 ];

@@ -14,6 +14,9 @@ import {
   X,
   Zap,
   Eye,
+  Brain,
+  Square,
+  RotateCcw,
 } from "lucide-react";
 
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
@@ -21,7 +24,7 @@ import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { Button } from "@/components/ui/button";
 import { Markdown } from "@/components/ui/markdown";
 import { Textarea } from "@/components/ui/textarea";
-import { sendChatMessage } from "@/lib/agent/controller";
+import { sendChatMessage, abortChatMessage, retryChatMessage } from "@/lib/agent/controller";
 import {
   useChat,
   type ChatArtifactAction,
@@ -202,29 +205,76 @@ const MessageBlockInner = ({ message }: { message: ChatMessage }) => {
               <p className="whitespace-pre-wrap">{message.text}</p>
             ) : null}
           </div>
-        ) : message.text ? (
-          <Markdown
-            content={message.text}
-            compact
-            allowHtml
-            streaming={message.status === "streaming"}
-          />
-        ) : message.status === "streaming" ? (
-          <span className="text-muted-foreground">...</span>
+        ) : message.role === "assistant" ? (
+          <div className="space-y-3">
+            {(() => {
+              const parts = message.text.split(/(:::tool-call\{id=".*?"\})/g);
+              return parts.map((part, i) => {
+                const match = part.match(/:::tool-call\{id="(.*?)"\}/);
+                if (match) {
+                  const id = match[1];
+                  const call = (message.toolCalls ?? []).find(
+                    (c) => c.id === id,
+                  );
+                  if (call) {
+                    return (
+                      <div key={id} className="my-2">
+                        <ToolCallView call={call} />
+                      </div>
+                    );
+                  }
+                  return null;
+                }
+                if (!part.trim() && i < parts.length - 1) return null;
+                const isLastPart = i === parts.length - 1;
+                return (
+                  <Markdown
+                    key={i}
+                    content={part}
+                    compact
+                    allowHtml
+                    streaming={message.status === "streaming" && isLastPart}
+                  />
+                );
+              });
+            })()}
+          </div>
         ) : null}
 
-        {message.thought && message.thought.trim().length > 0 && (
-          <details className="mt-2 text-xs opacity-75">
-            <summary className="cursor-pointer text-muted-foreground font-semibold hover:opacity-100 transition-opacity">
-              Analyzed thought process
-            </summary>
-            <div className="mt-2 p-2 bg-background/50 rounded text-muted-foreground text-opacity-80">
-              <Markdown content={message.thought.trim()} compact />
-            </div>
-          </details>
+        {message.thought && (
+          <div className="mt-3">
+            <details className="group overflow-hidden rounded-lg border border-border/50 bg-muted/20" open={message.status === "streaming" && !message.text}>
+              <summary className="flex cursor-pointer items-center justify-between px-3 py-2 text-[11px] font-medium text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-colors list-none [&::-webkit-details-marker]:hidden">
+                <div className="flex items-center gap-2">
+                  {message.status === "streaming" && !message.text ? (
+                    <Loader2 className="h-3 w-3 animate-spin text-sky-400" />
+                  ) : (
+                    <Brain className="h-3 w-3 text-sky-400/70" />
+                  )}
+                  <span>
+                    {message.status === "streaming" && !message.text
+                      ? "Thinking..."
+                      : "Thought Process"}
+                  </span>
+                </div>
+                <span className="text-[10px] opacity-0 group-hover:opacity-100 transition-opacity">
+                  {message.status === "streaming" && !message.text ? "View steps" : "Click to expand"}
+                </span>
+              </summary>
+              <div className="border-t border-border/40 px-3 py-2.5 bg-background/30">
+                <Markdown 
+                  content={message.thought.trim()} 
+                  compact 
+                  streaming={message.status === "streaming" && !message.text}
+                />
+              </div>
+            </details>
+          </div>
         )}
 
-        {(message.toolCalls ?? []).length > 0 ? (
+        {/* Fallback for tool calls that aren't interleaved in text (legacy messages) */}
+        {(message.toolCalls ?? []).length > 0 &&
+        !(message.text ?? "").includes(":::tool-call") ? (
           <div className="mt-3 w-full space-y-2">
             {(message.toolCalls ?? []).map((call) => (
               <ToolCallView key={call.id} call={call} />
@@ -495,8 +545,26 @@ export function ChatPanel() {
         onDrop={handleDrop}
       >
         {error ? (
-          <div className="mb-2 rounded-md border border-destructive/40 bg-destructive/10 px-2.5 py-1.5 text-[11px] text-destructive">
-            {error}
+          <div className="mb-2 flex items-center justify-between gap-3 rounded-md border border-destructive/40 bg-destructive/10 px-2.5 py-1.5 text-[11px] text-destructive">
+            <span className="flex-1">{error}</span>
+            <button
+              type="button"
+              onClick={async () => {
+                setError(null);
+                setSending(true);
+                try {
+                  await retryChatMessage();
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : "Retry failed");
+                } finally {
+                  setSending(false);
+                }
+              }}
+              className="flex items-center gap-1 rounded bg-destructive/20 px-1.5 py-0.5 font-medium transition hover:bg-destructive/30"
+            >
+              <RotateCcw className="h-3 w-3" />
+              Retry
+            </button>
           </div>
         ) : null}
         {pending.length > 0 ? (
@@ -568,12 +636,25 @@ export function ChatPanel() {
           <Button
             type="submit"
             size="icon-sm"
-            disabled={!canSend}
+            disabled={!canSend && !sending}
             className="absolute bottom-2 right-2"
-            aria-label="Send"
+            aria-label={sending ? "Stop" : "Send"}
+            title={sending ? "Stop generation" : "Send message"}
+            onClick={(e) => {
+              if (sending) {
+                e.preventDefault();
+                const lastAssistant = [...messages]
+                  .reverse()
+                  .find((m) => m.role === "assistant");
+                if (lastAssistant) {
+                  abortChatMessage(lastAssistant.id);
+                  setSending(false);
+                }
+              }
+            }}
           >
             {sending ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              <Square className="h-3 w-3 fill-current text-amber-500" />
             ) : (
               <ArrowUp className="h-3.5 w-3.5" />
             )}
