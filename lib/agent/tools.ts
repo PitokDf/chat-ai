@@ -824,6 +824,40 @@ export const createOrbitTools = async (
   cfg: any = {},
   mcpClients: any[] = [],
 ) => {
+  const normalizeMcpArgs = (input: unknown) => {
+    if (!input || typeof input !== "object" || Array.isArray(input)) {
+      return {} as Record<string, unknown>;
+    }
+    const out: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(input)) {
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        if (trimmed.length > 0) out[key] = trimmed;
+      } else if (value !== undefined && value !== null) {
+        out[key] = value;
+      }
+    }
+    return out;
+  };
+
+  const extractRequiredStringFields = (schema: unknown): string[] => {
+    if (!schema || typeof schema !== "object") return [];
+    const maybe = schema as {
+      required?: unknown;
+      properties?: Record<string, { type?: unknown }>;
+    };
+    const required = Array.isArray(maybe.required) ? maybe.required : [];
+    const properties =
+      maybe.properties && typeof maybe.properties === "object"
+        ? maybe.properties
+        : {};
+    return required.filter((field): field is string => {
+      if (typeof field !== "string") return false;
+      const prop = properties[field];
+      return !!prop && prop.type === "string";
+    });
+  };
+
   const readSkillTool = tool({
     description: "Read the full instructions of a specific skill by its name.",
     inputSchema: z.object({
@@ -916,13 +950,42 @@ export const createOrbitTools = async (
           parameters: jsonSchema(mcpTool.inputSchema),
           execute: async (args: any) => {
             try {
+              const normalizedArgs = normalizeMcpArgs(args);
+              const requiredStringFields = extractRequiredStringFields(
+                mcpTool.inputSchema,
+              );
+              const missingRequired = requiredStringFields.filter((field) => {
+                const value = normalizedArgs[field];
+                return typeof value !== "string" || value.trim().length === 0;
+              });
+              if (missingRequired.length > 0) {
+                return {
+                  error: `MCP tool '${mcpTool.name}' requires: ${missingRequired.join(", ")}.`,
+                  missingFields: missingRequired,
+                  suggestion:
+                    "Provide the missing required argument(s) before retrying.",
+                };
+              }
+
               const result = await client.callTool({
                 name: mcpTool.name,
-                arguments: args,
+                arguments: normalizedArgs,
               });
               return result;
             } catch (error) {
-              return { error: String(error) };
+              const message =
+                error instanceof Error ? error.message : String(error);
+              if (
+                /null or undefined query/i.test(message) ||
+                /passed a null or undefined query/i.test(message)
+              ) {
+                return {
+                  error: `MCP tool '${mcpTool.name}' failed because 'query' is empty.`,
+                  suggestion:
+                    "Retry with a non-empty 'query' argument that matches the tool schema.",
+                };
+              }
+              return { error: message };
             }
           },
         } as any);

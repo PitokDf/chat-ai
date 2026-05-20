@@ -556,6 +556,48 @@ function SkillsPanel() {
   const [draftDesc, setDraftDesc] = useState("");
   const [draftContent, setDraftContent] = useState("");
 
+  const addAkinatorTemplate = () => {
+    const exists = skills.some((s) => s.name.trim().toLowerCase() === "akinator mode");
+    if (exists) {
+      toast.error("Skill 'Akinator Mode' sudah ada.");
+      return;
+    }
+
+    addSkill({
+      name: "Akinator Mode",
+      description:
+        "Main tebak-tebakan ala Akinator: AI bertanya ya/tidak lalu menebak.",
+      content: [
+        "# Akinator Mode",
+        "",
+        "Kamu berperan sebagai 'Akinator' (permainan tebak-tebakan). Tujuanmu adalah menebak apa/siapa yang sedang dipikirkan user dengan mengajukan pertanyaan ya/tidak.",
+        "",
+        "## Aturan permainan",
+        "- Pertama, minta user memilih 1 kategori: **Karakter**, **Orang nyata**, **Objek**, atau **Tempat** (kalau user sudah menyebut, lewati).",
+        "- Instruksikan user untuk menjawab dengan salah satu dari: **Ya / Tidak / Tidak tahu / Mungkin / Tergantung**.",
+        "- Ajukan 1 pertanyaan per giliran. Pertanyaan harus spesifik dan memperkecil ruang kemungkinan.",
+        "- Simpan progres internal: ringkas hipotesis & ciri-ciri yang sudah pasti sebelum bertanya lagi (jangan tampilkan rantai pikiran panjang).",
+        "",
+        "## Strategi bertanya",
+        "- Mulai dari pertanyaan broad (fiksi vs nyata, manusia vs non-manusia, era, medium: anime/film/game/buku), lalu mengerucut (asal negara, profesi, kekuatan, relasi).",
+        "- Jika user sering menjawab 'Tidak tahu', ubah ke pertanyaan yang lebih mudah dijawab (mis. 'apakah terkenal di Indonesia?' atau 'apakah dari anime?').",
+        "- Maksimalkan informasi: hindari pertanyaan yang redundant atau bisa dijawab dari pertanyaan sebelumnya.",
+        "",
+        "## Menebak",
+        "- Setelah kamu cukup yakin (≈70%+), lakukan **tebakan**: \"Aku menebak kamu memikirkan: X. Benar?\"",
+        "- Jika salah, minta 1 petunjuk singkat (mis. 'karakter dari mana? ciri paling menonjol?') lalu lanjutkan 2–4 pertanyaan lagi sebelum menebak ulang.",
+        "- Jika benar, ucapkan selamat dan tawarkan main lagi.",
+        "",
+        "## Batasan",
+        "- Jangan meminta data sensitif pribadi. Untuk 'Orang nyata', fokus ke figur publik.",
+        "- Jangan browsing web kecuali user memintanya.",
+        "",
+        "Mulai game saat user bilang 'mulai' atau mengajak bermain.",
+      ].join("\n"),
+    });
+    toast.success("Template 'Akinator Mode' ditambahkan.");
+  };
+
   const handleAddNew = () => {
     const id = Date.now().toString(); // temporary ID just for state
     setEditingId("new");
@@ -666,6 +708,15 @@ function SkillsPanel() {
           />
           <Button size="sm" variant="outline" onClick={() => fileInputRef.current?.click()} className="gap-1.5 h-7 text-xs">
             Import .md
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={addAkinatorTemplate}
+            disabled={editingId !== null}
+            className="h-7 text-xs"
+          >
+            Add Akinator
           </Button>
           <Button size="sm" onClick={handleAddNew} disabled={editingId !== null} className="gap-1.5 h-7 text-xs">
             <Plus className="h-3.5 w-3.5" /> Add Skill

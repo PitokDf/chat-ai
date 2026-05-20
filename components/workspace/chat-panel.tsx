@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import {
   ArrowUp,
@@ -43,6 +43,37 @@ const TEMPLATES = [
   "Make a pomodoro timer with pause/reset and desktop notifications.",
   "Scaffold a Vite React app that fetches GitHub user info.",
 ];
+
+const AKINATOR_QUICK_ANSWERS = [
+  "Ya",
+  "Tidak",
+  "Tidak tahu",
+  "Mungkin",
+  "Tergantung",
+] as const;
+
+const AKINATOR_STOP_RE = /\b(stop|selesai|berhenti|sudah dulu)\b/i;
+
+const isLikelyAkinatorQuestion = (assistantText: string) => {
+  const text = assistantText.trim();
+  if (!text) return false;
+  const hasQuestion = text.includes("?");
+  const asksAnswerFormat =
+    /jawab( dengan)?\s*(ya|tidak)|ya\s*\/\s*tidak|tidak tahu|mungkin|tergantung/i.test(
+      text,
+    );
+  const guessingContext = /\btebakan\b|\bpetunjuk\b|aku menebak|yang kamu pikirkan/i.test(
+    text,
+  );
+  const numberedQuestion = /pertanyaan\s*\d+\s*:/i.test(text);
+  const hasBinaryOptions =
+    /(^|\n)\s*[-*•]\s*ya\b/i.test(text) &&
+    /(^|\n)\s*[-*•]\s*tidak\b/i.test(text);
+  return (
+    hasQuestion &&
+    (asksAnswerFormat || guessingContext || numberedQuestion || hasBinaryOptions)
+  );
+};
 
 const ActionIcon = ({ action }: { action: ChatArtifactAction }) => {
   const base = "h-3.5 w-3.5";
@@ -373,6 +404,34 @@ export function ChatPanel() {
 
   const [atBottom, setAtBottom] = useState(true);
 
+  const lastAssistantMessage = useMemo(
+    () => [...messages].reverse().find((m) => m.role === "assistant"),
+    [messages],
+  );
+
+  const akinatorSessionActive = useMemo(() => {
+    let active = false;
+    for (const message of messages) {
+      const combinedText = `${message.text}\n${message.thought ?? ""}`;
+      if (!combinedText) continue;
+      if (message.role === "assistant" && isLikelyAkinatorQuestion(combinedText)) {
+        active = true;
+      }
+      if (message.role === "user" && AKINATOR_STOP_RE.test(combinedText)) {
+        active = false;
+      }
+    }
+    return active;
+  }, [messages]);
+
+  const showAkinatorQuickReply =
+    akinatorSessionActive &&
+    !!lastAssistantMessage &&
+    lastAssistantMessage.status === "done" &&
+    isLikelyAkinatorQuestion(lastAssistantMessage.text) &&
+    !sending &&
+    pending.length === 0;
+
   useEffect(() => {
     if (!atBottom || messages.length === 0) return;
     virtuosoRef.current?.scrollToIndex({
@@ -426,8 +485,8 @@ export function ChatPanel() {
   const removePending = (id: string) =>
     setPending((prev) => prev.filter((item) => item.id !== id));
 
-  const handleSend = async () => {
-    if (!canSend) return;
+  const sendMessage = async (text: string, attachments = pending) => {
+    if (text.trim().length === 0 && attachments.length === 0) return;
     const currentKey = selectCurrentKey(useSettings.getState());
     if (!currentKey) {
       const message =
@@ -437,15 +496,13 @@ export function ChatPanel() {
       return;
     }
     setError(null);
-    const text = input;
-    const attachmentsToSend = pending;
     setInput("");
     setPending([]);
     setSending(true);
     try {
       await sendChatMessage({
         text,
-        attachments: attachmentsToSend.map((a) => ({
+        attachments: attachments.map((a) => ({
           name: a.name,
           mimeType: a.mimeType,
           kind: a.kind,
@@ -461,6 +518,11 @@ export function ChatPanel() {
     } finally {
       setSending(false);
     }
+  };
+
+  const handleSend = async () => {
+    if (!canSend) return;
+    await sendMessage(input);
   };
 
   const handlePaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
@@ -594,6 +656,20 @@ export function ChatPanel() {
                   <X className="h-3 w-3" />
                 </button>
               </div>
+            ))}
+          </div>
+        ) : null}
+        {showAkinatorQuickReply ? (
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {AKINATOR_QUICK_ANSWERS.map((answer) => (
+              <button
+                key={answer}
+                type="button"
+                onClick={() => void sendMessage(answer, [])}
+                className="rounded-full border border-border bg-background px-3 py-1 text-xs text-foreground transition hover:bg-muted"
+              >
+                {answer}
+              </button>
             ))}
           </div>
         ) : null}
