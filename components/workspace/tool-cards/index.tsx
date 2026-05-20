@@ -21,6 +21,7 @@ import {
   WikipediaCard,
 } from "./generic-cards";
 import { hasError } from "./types";
+import { YouTubeCard } from "./youtube-card";
 
 const TOOL_LABEL: Record<string, string> = {
   weather: "Weather",
@@ -43,6 +44,7 @@ const TOOL_LABEL: Record<string, string> = {
   wikipedia: "Wikipedia",
   datetime: "Date & time",
   calculator: "Calculator",
+  youtubeMusic: "YouTube Music",
 };
 
 const renderCardBody = (call: ChatToolCall) => {
@@ -75,6 +77,8 @@ const renderCardBody = (call: ChatToolCall) => {
       return <DateTimeCard call={call} />;
     case "calculator":
       return <CalculatorCard call={call} />;
+    case "youtubeMusic":
+      return <YouTubeCard call={call} />;
     default:
       return null;
   }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { AlertCircle, Brain, Loader2, RefreshCw, Server } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -30,10 +30,11 @@ export function ModelPicker() {
   const models = activeEntry.models;
   const status = activeEntry.status;
 
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
 
   // Auto-fetch whenever provider or its key changes.
   useEffect(() => {

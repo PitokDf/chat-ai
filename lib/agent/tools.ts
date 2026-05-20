@@ -1,6 +1,8 @@
 import { jsonSchema, tool } from "ai";
 import { z } from "zod";
 
+import { youtubeMusicTool } from "@/lib/agent/youtube";
+
 /** Generic wrapper to catch tool errors and return them as JSON for the model. */
 const safe = <T>(fn: () => Promise<T>) =>
   fn().catch((err) => ({
@@ -935,6 +937,7 @@ export const createOrbitTools = async (
     calculator: calculatorTool,
     readSkill: readSkillTool,
     saveMemory: saveMemoryTool,
+    youtubeMusic: youtubeMusicTool,
   };
 
   const mcpTools: Record<string, any> = {};
