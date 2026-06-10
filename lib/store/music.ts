@@ -41,13 +41,19 @@ export const useMusic = create<MusicState>((set, get) => ({
   currentTime: 0,
   duration: 0,
 
-  playTrack: (track) =>
-    set({
-      currentTrack: track,
-      isPlaying: true,
-      currentTime: 0,
-      duration: track.duration,
-    }),
+  playTrack: (track) => {
+    const { currentTrack } = get();
+    if (currentTrack && currentTrack.videoId === track.videoId) {
+      set({ isPlaying: true, currentTime: 0 });
+    } else {
+      set({
+        currentTrack: track,
+        isPlaying: true,
+        currentTime: 0,
+        duration: track.duration,
+      });
+    }
+  },
 
   addToQueue: (track) =>
     set((state) => ({

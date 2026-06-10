@@ -74,6 +74,7 @@ const toRawContent = (m: ChatMessage) => {
 
 export type SendOptions = {
   text: string;
+  agentId?: string;
   attachments?: Array<{
     name: string;
     mimeType: string;
@@ -137,8 +138,11 @@ export const retryChatMessage = async () => {
   setMessages(newMessages);
 
   // Re-send
+  const { useAgents } = await import("@/lib/store/agents");
+  const agentId = useAgents.getState().activeAgentId;
   return sendChatMessage({
     text: lastUser.text,
+    agentId: agentId ?? undefined,
     attachments: lastUser.attachments?.map((a) => ({
       name: a.name,
       mimeType: a.mimeType,
@@ -152,15 +156,33 @@ export const retryChatMessage = async () => {
 /**
  * Send a user message, stream the reply, and execute any artifact actions.
  */
-export const sendChatMessage = async ({ text, attachments }: SendOptions) => {
+export const sendChatMessage = async ({ text, agentId, attachments }: SendOptions) => {
   const trimmed = text.trim();
   if (!trimmed && (!attachments || attachments.length === 0)) return;
 
-  const { providerId, modelId } = useSettings.getState();
+  let activeProviderId: ProviderId;
+  let activeModelId: string;
+  let activeAgentId: string | undefined;
+  let agentSystemPrompt: string | undefined;
+
+  if (agentId) {
+    const { useAgents } = await import("@/lib/store/agents");
+    const agent = useAgents.getState().agents.find((a) => a.id === agentId);
+    if (!agent) throw new Error(`Agent "${agentId}" not found.`);
+    activeProviderId = agent.providerId;
+    activeModelId = agent.modelId;
+    activeAgentId = agent.id;
+    agentSystemPrompt = agent.systemPrompt;
+  } else {
+    const settings = useSettings.getState();
+    activeProviderId = settings.providerId;
+    activeModelId = settings.modelId;
+  }
+
   const apiKey = selectCurrentKey(useSettings.getState());
   if (!apiKey) {
     throw new Error(
-      `Add your API key for ${providerId} in Settings before sending.`,
+      `Add your API key for ${activeProviderId} in Settings before sending.`,
     );
   }
 
@@ -194,8 +216,8 @@ export const sendChatMessage = async ({ text, attachments }: SendOptions) => {
     text: "",
     artifacts: [],
     toolCalls: [],
-    providerId,
-    modelId,
+    providerId: activeProviderId,
+    modelId: activeModelId,
     status: "streaming",
     createdAt: Date.now(),
   };
@@ -225,8 +247,10 @@ export const sendChatMessage = async ({ text, attachments }: SendOptions) => {
       headers: { "Content-Type": "application/json" },
       signal: abortController.signal,
       body: JSON.stringify({
-        providerId,
-        modelId,
+        providerId: activeProviderId,
+        modelId: activeModelId,
+        agentId: activeAgentId,
+        agentSystemPrompt,
         apiKey,
         searchProvider: prefs.searchProvider,
         braveSearchKey: prefs.braveSearchKey || undefined,

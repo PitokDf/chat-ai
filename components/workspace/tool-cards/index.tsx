@@ -14,6 +14,10 @@ import { CryptoTrackerCard } from "./crypto-tracker-card";
 import { RiskCalculatorCard } from "./risk-calculator-card";
 import { GlobalMarketsCard } from "./global-markets-card";
 import { PortfolioManagerCard } from "./portfolio-manager-card";
+import { StockScreenerCard } from "./stock-screener-card";
+import { EarningsCalendarCard } from "./earnings-calendar-card";
+import { DividendHistoryCard } from "./dividend-history-card";
+import { ChartControlCard, ChartDrawCard } from "./chart-cards";
 import {
   CalculatorCard,
   CurrencyCard,
@@ -35,6 +39,11 @@ const TOOL_LABEL: Record<string, string> = {
   portfolioManager: "Virtual portfolio",
   fundamentalAnalysis: "Fundamental analysis",
   financialSentiment: "Market sentiment",
+  stockScreener: "Stock screener",
+  earningsCalendar: "Earnings calendar",
+  dividendHistory: "Dividend history",
+  chartControl: "Chart control",
+  chartDraw: "Chart drawing",
   newsSearch: "News",
   webSearch: "Web search",
   webFetch: "Web fetch",
@@ -67,6 +76,16 @@ const renderCardBody = (call: ChatToolCall) => {
       return <GlobalMarketsCard call={call} />;
     case "portfolioManager":
       return <PortfolioManagerCard call={call} />;
+    case "stockScreener":
+      return <StockScreenerCard call={call} />;
+    case "earningsCalendar":
+      return <EarningsCalendarCard call={call} />;
+    case "dividendHistory":
+      return <DividendHistoryCard call={call} />;
+    case "chartControl":
+      return <ChartControlCard call={call} />;
+    case "chartDraw":
+      return <ChartDrawCard call={call} />;
     case "newsSearch":
       return <NewsCard call={call} />;
     case "currency":

@@ -250,17 +250,18 @@ export const stockHistoryTool = tool({
 
 export const stockTechnicalAnalysisTool = tool({
   description:
-    "Get technical analysis indicators (SMA, EMA, RSI, MACD, Bollinger Bands) to help analyze stock trends.",
+    "Get comprehensive technical analysis indicators (SMA, EMA, RSI, MACD, Bollinger Bands, Stochastic, ATR, VWAP, Support/Resistance) to help analyze stock trends.",
   inputSchema: z.object({
     symbol: z.string().describe("Stock symbol, e.g. 'AAPL' or 'BBCA'."),
+    range: z.enum(["3mo", "6mo", "1y", "2y"]).default("1y").describe("Data range for analysis."),
   }),
-  execute: async ({ symbol }) =>
+  execute: async ({ symbol, range }) =>
     safe(async () => {
       let data: any = null;
       for (const v of [symbol, `${symbol}.JK`, `${symbol}.ID`]) {
         try {
           const res = await fetch(
-            `https://query2.finance.yahoo.com/v8/finance/chart/${v.toUpperCase()}?range=1y&interval=1d`,
+            `https://query2.finance.yahoo.com/v8/finance/chart/${v.toUpperCase()}?range=${range}&interval=1d`,
             { headers: YAHOO_HEADERS, signal: AbortSignal.timeout(5000) },
           );
           if (res.ok) {
@@ -278,10 +279,17 @@ export const stockTechnicalAnalysisTool = tool({
         .map((t: number, i: number) => ({
           date: new Date(t * 1000).toISOString(),
           close: result.indicators.quote[0].close[i],
+          high: result.indicators.quote[0].high[i],
+          low: result.indicators.quote[0].low[i],
+          open: result.indicators.quote[0].open[i],
+          volume: result.indicators.quote[0].volume[i],
         }))
         .filter((p: any) => p.close !== null);
 
       const closePrices = allPoints.map((p: any) => p.close);
+      const highPrices = allPoints.map((p: any) => p.high);
+      const lowPrices = allPoints.map((p: any) => p.low);
+      const volumes = allPoints.map((p: any) => p.volume);
 
       if (closePrices.length < 50) {
         throw new Error("Not enough data to calculate technical indicators.");
@@ -313,7 +321,6 @@ export const stockTechnicalAnalysisTool = tool({
         const shortEMA = calculateEMA(prices, 12);
         const longEMA = calculateEMA(prices, 26);
         const macdLine = shortEMA - longEMA;
-        // Approximation of Signal Line
         const signalLine = calculateEMA(prices.slice(-9), 9);
         return { macdLine, signalLine, histogram: macdLine - signalLine };
       };
@@ -349,13 +356,68 @@ export const stockTechnicalAnalysisTool = tool({
         return 100 - 100 / (1 + rs);
       };
 
+      const calculateStochastic = (highs: number[], lows: number[], closes: number[], period: number = 14) => {
+        const recentHighs = highs.slice(-period);
+        const recentLows = lows.slice(-period);
+        const highestHigh = Math.max(...recentHighs);
+        const lowestLow = Math.min(...recentLows);
+        const currentClose = closes[closes.length - 1];
+        const k = ((currentClose - lowestLow) / (highestHigh - lowestLow)) * 100;
+        return { k, d: k };
+      };
+
+      const calculateATR = (highs: number[], lows: number[], closes: number[], period: number = 14) => {
+        const trueRanges: number[] = [];
+        for (let i = 1; i < closes.length; i++) {
+          const tr = Math.max(
+            highs[i] - lows[i],
+            Math.abs(highs[i] - closes[i - 1]),
+            Math.abs(lows[i] - closes[i - 1])
+          );
+          trueRanges.push(tr);
+        }
+        const atrSlice = trueRanges.slice(-period);
+        return atrSlice.reduce((a, b) => a + b, 0) / period;
+      };
+
+      const calculateVWAP = (highs: number[], lows: number[], closes: number[], volumes: number[]) => {
+        let cumulativeTPV = 0;
+        let cumulativeVolume = 0;
+        for (let i = 0; i < closes.length; i++) {
+          const tp = (highs[i] + lows[i] + closes[i]) / 3;
+          cumulativeTPV += tp * volumes[i];
+          cumulativeVolume += volumes[i];
+        }
+        return cumulativeVolume > 0 ? cumulativeTPV / cumulativeVolume : closes[closes.length - 1];
+      };
+
+      const calculateSupportResistance = (highs: number[], lows: number[], closes: number[]) => {
+        const recentCloses = closes.slice(-60);
+        const recentHighs = highs.slice(-60);
+        const recentLows = lows.slice(-60);
+
+        const pivot = (recentHighs[recentHighs.length - 1] + recentLows[recentLows.length - 1] + recentCloses[recentCloses.length - 1]) / 3;
+        const r1 = 2 * pivot - recentLows[recentLows.length - 1];
+        const s1 = 2 * pivot - recentHighs[recentHighs.length - 1];
+        const r2 = pivot + (recentHighs[recentHighs.length - 1] - recentLows[recentLows.length - 1]);
+        const s2 = pivot - (recentHighs[recentHighs.length - 1] - recentLows[recentLows.length - 1]);
+
+        return { pivot, r1, r2, s1, s2 };
+      };
+
       const currentPrice = closePrices[closePrices.length - 1];
       const sma20 = calculateSMA(closePrices, 20);
       const sma50 = calculateSMA(closePrices, 50);
-      const sma200 = calculateSMA(closePrices, 200) || null;
+      const sma200 = closePrices.length >= 200 ? calculateSMA(closePrices, 200) : null;
+      const ema12 = calculateEMA(closePrices, 12);
+      const ema26 = calculateEMA(closePrices, 26);
       const rsi14 = calculateRSI(closePrices, 14);
       const macd = calculateMACD(closePrices);
       const bb = calculateBollingerBands(closePrices);
+      const stochastic = calculateStochastic(highPrices, lowPrices, closePrices);
+      const atr = calculateATR(highPrices, lowPrices, closePrices);
+      const vwap = calculateVWAP(highPrices, lowPrices, closePrices, volumes);
+      const sr = calculateSupportResistance(highPrices, lowPrices, closePrices);
 
       let trend = "Neutral";
       if (currentPrice > sma20 && sma20 > sma50) trend = "Bullish (Uptrend)";
@@ -374,6 +436,14 @@ export const stockTechnicalAnalysisTool = tool({
       else if (macd.macdLine < macd.signalLine)
         macdSignal = "Bearish Crossover";
 
+      let stochasticSignal = "Neutral";
+      if (stochastic.k > 80) stochasticSignal = "Overbought";
+      else if (stochastic.k < 20) stochasticSignal = "Oversold";
+
+      let volatility = "Normal";
+      if (atr > currentPrice * 0.03) volatility = "High";
+      else if (atr < currentPrice * 0.01) volatility = "Low";
+
       return {
         symbol: result.meta.symbol,
         currentPrice,
@@ -381,6 +451,8 @@ export const stockTechnicalAnalysisTool = tool({
           sma20,
           sma50,
           sma200,
+          ema12,
+          ema26,
           rsi14,
           macd: {
             macdLine: macd.macdLine,
@@ -392,11 +464,27 @@ export const stockTechnicalAnalysisTool = tool({
             middle: bb.middle,
             lower: bb.lower,
           },
+          stochastic: {
+            k: stochastic.k,
+            d: stochastic.d,
+          },
+          atr: {
+            value: atr,
+            percent: (atr / currentPrice) * 100,
+          },
+          vwap,
+          supportResistance: sr,
         },
         analysis: {
           trend,
           momentum,
           macdSignal,
+          stochasticSignal,
+          volatility,
+          bbPosition: currentPrice > bb.upper ? "Above Upper" : currentPrice < bb.lower ? "Below Lower" : "Within Bands",
+          vwapPosition: currentPrice > vwap ? "Above VWAP (Bullish)" : "Below VWAP (Bearish)",
+          nearSupport: Math.abs(currentPrice - sr.s1) / currentPrice < 0.02,
+          nearResistance: Math.abs(currentPrice - sr.r1) / currentPrice < 0.02,
         },
         chartData,
       };
@@ -697,57 +785,179 @@ export const riskCalculatorTool = tool({
 
 export const fundamentalAnalysisTool = tool({
   description:
-    "A placeholder proxy to direct the AI to analyze basic stats and PE if available.",
+    "Get comprehensive fundamental analysis data for a stock including P/E, Market Cap, Book Value, EPS, Dividend Yield, and more from Yahoo Finance.",
   inputSchema: z.object({
-    symbol: z.string().describe("Stock symbol"),
+    symbol: z.string().describe("Stock symbol, e.g. 'BBCA' or 'AAPL'."),
   }),
   execute: async ({ symbol }) =>
     safe(async () => {
-      // Basic implementation utilizing the chart metadata as a proxy
-      // since deep fundamentals API require paid keys.
-      const basicquote = await fetchYahooChartQuote(symbol);
-      if (!basicquote) throw new Error("Symbol not found");
+      let data: any = null;
+      for (const v of [symbol, `${symbol}.JK`, `${symbol}.ID`]) {
+        try {
+          const res = await fetch(
+            `https://query2.finance.yahoo.com/v8/finance/chart/${v.toUpperCase()}?range=1d&interval=1d`,
+            { headers: YAHOO_HEADERS, signal: AbortSignal.timeout(5000) },
+          );
+          if (res.ok) {
+            data = await res.json();
+            break;
+          }
+        } catch {}
+      }
+
+      if (!data) throw new Error("Symbol not found");
+      const meta = data.chart.result?.[0]?.meta;
+      if (!meta) throw new Error("Symbol not found");
+
+      const quote = await fetchYahooChartQuote(symbol);
+
+      let fundamentalData: any = null;
+      try {
+        const quoteSummaryRes = await fetch(
+          `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${meta.symbol}?modules=defaultKeyStatistics,financialData,summaryDetail,earningsHistory`,
+          { headers: YAHOO_HEADERS, signal: AbortSignal.timeout(5000) },
+        );
+        if (quoteSummaryRes.ok) {
+          const summaryData = await quoteSummaryRes.json();
+          fundamentalData = summaryData.quoteSummary?.result?.[0];
+        }
+      } catch {}
+
+      const stats = fundamentalData?.defaultKeyStatistics || {};
+      const financial = fundamentalData?.financialData || {};
+      const summary = fundamentalData?.summaryDetail || {};
+
       return {
-        symbol,
+        symbol: meta.symbol,
+        name: meta.shortName || meta.longName || meta.symbol,
+        price: meta.regularMarketPrice,
+        currency: meta.currency,
+        exchange: meta.exchangeName,
+        valuation: {
+          marketCap: summary.marketCap?.fmt || stats.marketCap?.fmt || "N/A",
+          trailingPE: summary.trailingPE?.raw || stats.trailingPE?.raw || null,
+          forwardPE: summary.forwardPE?.raw || stats.forwardPE?.raw || null,
+          priceToBook: summary.priceToBook?.raw || stats.priceToBook?.raw || null,
+          enterpriseToRevenue: stats.enterpriseToRevenue?.raw || null,
+          enterpriseToEbitda: stats.enterpriseToEbitda?.raw || null,
+        },
+        profitability: {
+          profitMargin: financial.profitMargins?.raw || stats.profitMargins?.raw || null,
+          operatingMargin: financial.operatingMargins?.raw || stats.operatingMargins?.raw || null,
+          returnOnEquity: financial.returnOnEquity?.raw || stats.returnOnEquity?.raw || null,
+          returnOnAssets: financial.returnOnAssets?.raw || stats.returnOnAssets?.raw || null,
+          revenueGrowth: financial.revenueGrowth?.raw || stats.revenueGrowth?.raw || null,
+          earningsGrowth: financial.earningsGrowth?.raw || stats.earningsGrowth?.raw || null,
+        },
+        perShare: {
+          epsTrailing: stats.trailingEps?.raw || null,
+          epsForward: stats.forwardEps?.raw || null,
+          bookValue: stats.bookValue?.raw || null,
+          revenuePerShare: stats.revenuePerShare?.raw || null,
+        },
+        dividends: {
+          yield: summary.dividendYield?.raw || stats.dividendYield?.raw || null,
+          rate: summary.dividendRate?.raw || stats.dividendRate?.raw || null,
+          payoutRatio: stats.payoutRatio?.raw || null,
+        },
+        financialHealth: {
+          totalCash: financial.totalCash?.fmt || stats.totalCash?.fmt || "N/A",
+          totalDebt: financial.totalDebt?.fmt || stats.totalDebt?.fmt || "N/A",
+          debtToEquity: stats.debtToEquity?.raw || null,
+          currentRatio: financial.currentRatio?.raw || stats.currentRatio?.raw || null,
+          quickRatio: financial.quickRatio?.raw || stats.quickRatio?.raw || null,
+        },
+        trading: {
+          beta: stats.beta?.raw || null,
+          fiftyTwoWeekHigh: summary.fiftyTwoWeekHigh?.raw || null,
+          fiftyTwoWeekLow: summary.fiftyTwoWeekLow?.raw || null,
+          averageVolume: summary.averageVolume?.raw || null,
+          shortRatio: stats.shortRatio?.raw || null,
+        },
         notice:
-          "Advanced fundamental metrics (P/E, ROE, PBV) might require combining this with a web search. Here is the basic valuation from real-time data.",
-        price: basicquote.price,
-        previousClose: basicquote.previousClose,
-        dayRange: `${basicquote.dayLow} - ${basicquote.dayHigh}`,
-        volume: basicquote.volume,
-        exchange: basicquote.exchange,
+          "Data from Yahoo Finance. Some fields may be N/A for certain markets (e.g., IDX stocks may have limited fundamental data).",
       };
     }),
 });
 
 export const financialSentimentTool = tool({
   description:
-    "Analyze market sentiment for a stock by pulling latest headlines.",
+    "Analyze market sentiment for a stock by pulling latest headlines and performing keyword-based sentiment scoring.",
   inputSchema: z.object({
     symbol: z.string().describe("Stock symbol"),
+    language: z.enum(["en", "id"]).default("en").describe("Language for news search."),
   }),
-  execute: async ({ symbol }) =>
+  execute: async ({ symbol, language }) =>
     safe(async () => {
-      // Using Google News RSS to get sentiment context
+      const langParam = language === "id" ? "hl=id&gl=ID&ceid=ID:id" : "hl=en-US&gl=US&ceid=US:en";
       const res = await fetch(
-        `https://news.google.com/rss/search?q=${encodeURIComponent(symbol + " stock")}&hl=en-US&gl=US&ceid=US:en`,
+        `https://news.google.com/rss/search?q=${encodeURIComponent(symbol + " stock saham")}&${langParam}`,
       );
       if (!res.ok) throw new Error("News search failed: " + res.status);
       const text = await res.text();
       const items = text.match(/<item>[\s\S]*?<\/item>/g) || [];
 
-      const snippets = items
-        .slice(0, 5)
-        .map((item) => item.match(/<title>(.*?)<\/title>/)?.[1] || "")
-        .filter(Boolean);
+      const bullishKeywords = [
+        "surge", "rally", "jump", "gain", "rise", "bullish", "upgrade", "outperform",
+        "buy", "strong", "record high", "breakout", "growth", "profit", "beat",
+        "naik", "rekor", "untung", "positif", "optimistis", "rekomendasi beli",
+      ];
+      const bearishKeywords = [
+        "crash", "drop", "fall", "decline", "loss", "bearish", "downgrade", "underperform",
+        "sell", "weak", "low", "breakdown", "recession", "miss", "warning",
+        "turun", "rugi", "negatif", "pesimis", "rekomendasi jual", "anjlok",
+      ];
+
+      const articles = items.slice(0, 10).map((item) => {
+        const title = item.match(/<title>(.*?)<\/title>/)?.[1] || "";
+        const pubDate = item.match(/<pubDate>(.*?)<\/pubDate>/)?.[1] || "";
+        const source = item.match(/<source[^>]*>(.*?)<\/source>/)?.[1] || "";
+
+        const titleLower = title.toLowerCase();
+        let sentiment: "bullish" | "bearish" | "neutral" = "neutral";
+        let score = 0;
+
+        for (const kw of bullishKeywords) {
+          if (titleLower.includes(kw)) score++;
+        }
+        for (const kw of bearishKeywords) {
+          if (titleLower.includes(kw)) score--;
+        }
+
+        if (score > 0) sentiment = "bullish";
+        else if (score < 0) sentiment = "bearish";
+
+        return { title, pubDate, source, sentiment, score };
+      });
+
+      const totalScore = articles.reduce((acc, a) => acc + a.score, 0);
+      const bullishCount = articles.filter((a) => a.sentiment === "bullish").length;
+      const bearishCount = articles.filter((a) => a.sentiment === "bearish").length;
+      const neutralCount = articles.filter((a) => a.sentiment === "neutral").length;
+
+      let overallSentiment = "Neutral";
+      if (totalScore > 2) overallSentiment = "Strongly Bullish";
+      else if (totalScore > 0) overallSentiment = "Mildly Bullish";
+      else if (totalScore < -2) overallSentiment = "Strongly Bearish";
+      else if (totalScore < 0) overallSentiment = "Mildly Bearish";
 
       return {
         symbol,
-        sentimentContext: snippets.length
-          ? snippets
-          : ["No recent headlines found."],
-        instructions:
-          "Analyze the sentimentContext strictly to determine if it's Bullish, Neutral, or Bearish.",
+        overallSentiment,
+        totalScore,
+        breakdown: {
+          bullish: bullishCount,
+          bearish: bearishCount,
+          neutral: neutralCount,
+        },
+        articles: articles.map((a) => ({
+          title: a.title,
+          source: a.source,
+          publishedAt: a.pubDate,
+          sentiment: a.sentiment,
+        })),
+        disclaimer:
+          "Sentiment is keyword-based and may not reflect actual market conditions. Always verify with fundamental and technical analysis.",
       };
     }),
 });
@@ -772,6 +982,171 @@ export const globalMarketsTool = tool({
       if (finalQuotes.length === 0)
         throw new Error("No data found for symbols");
       return { quotes: finalQuotes };
+    }),
+});
+
+export const stockScreenerTool = tool({
+  description:
+    "Screen stocks based on criteria like market cap, P/E ratio, dividend yield, and sector. Returns top matching stocks.",
+  inputSchema: z.object({
+    criteria: z
+      .enum(["large_cap", "mid_cap", "small_cap", "high_dividend", "growth", "value", "momentum"])
+      .describe("Screening criteria."),
+    region: z.enum(["US", "ID"]).default("US").describe("Market region."),
+  }),
+  execute: async ({ criteria, region }) =>
+    safe(async () => {
+      let scrId = "";
+      switch (criteria) {
+        case "large_cap":
+          scrId = "large_cap";
+          break;
+        case "mid_cap":
+          scrId = "mid_cap";
+          break;
+        case "small_cap":
+          scrId = "small_cap";
+          break;
+        case "high_dividend":
+          scrId = "high_dividend";
+          break;
+        case "growth":
+          scrId = "aggressive_small_caps";
+          break;
+        case "value":
+          scrId = "most_actives";
+          break;
+        case "momentum":
+          scrId = "day_gainers";
+          break;
+      }
+
+      const res = await fetch(
+        `https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?formatted=false&lang=en-US&region=${region}&scrIds=${scrId}&count=10`,
+        { headers: YAHOO_HEADERS, signal: AbortSignal.timeout(8000) },
+      );
+      if (!res.ok) throw new Error("Failed to fetch screener data");
+      const data = await res.json();
+      const quotes = data.finance?.result?.[0]?.quotes || [];
+
+      return {
+        criteria,
+        region,
+        count: quotes.length,
+        stocks: quotes.map((q: any) => ({
+          symbol: q.symbol,
+          name: q.shortName || q.longName,
+          price: q.regularMarketPrice,
+          change: q.regularMarketChange,
+          changePercent: q.regularMarketChangePercent,
+          marketCap: q.marketCap,
+          pe: q.trailingPE,
+          dividendYield: q.dividendYield,
+          volume: q.regularMarketVolume,
+          fiftyTwoWeekHigh: q.fiftyTwoWeekHigh,
+          fiftyTwoWeekLow: q.fiftyTwoWeekLow,
+        })),
+      };
+    }),
+});
+
+export const earningsCalendarTool = tool({
+  description:
+    "Get upcoming earnings dates and EPS estimates for a stock. Useful for planning trades around earnings announcements.",
+  inputSchema: z.object({
+    symbol: z.string().describe("Stock symbol, e.g. 'AAPL' or 'BBCA'."),
+  }),
+  execute: async ({ symbol }) =>
+    safe(async () => {
+      let data: any = null;
+      for (const v of [symbol, `${symbol}.JK`, `${symbol}.ID`]) {
+        try {
+          const res = await fetch(
+            `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${v.toUpperCase()}?modules=earningsHistory,calendarEvents`,
+            { headers: YAHOO_HEADERS, signal: AbortSignal.timeout(5000) },
+          );
+          if (res.ok) {
+            data = await res.json();
+            break;
+          }
+        } catch {}
+      }
+
+      if (!data) throw new Error("Earnings data not available");
+
+      const summary = data.quoteSummary?.result?.[0];
+      const earningsHistory = summary?.earningsHistory?.history || [];
+      const calendarEvents = summary?.calendarEvents || {};
+
+      const nextEarningsDate = calendarEvents.earnings?.earningsDate?.[0]?.raw
+        ? new Date(calendarEvents.earnings.earningsDate[0].raw * 1000).toISOString()
+        : null;
+
+      const earningsSurprise = earningsHistory.map((h: any) => ({
+        quarter: h.quarter?.fmt || "N/A",
+        epsEstimate: h.epsEstimate?.raw || null,
+        epsActual: h.epsActual?.raw || null,
+        surprise: h.surprise?.raw || null,
+        surprisePercent: h.surprisePercent?.raw || null,
+      }));
+
+      return {
+        symbol: symbol.toUpperCase(),
+        nextEarningsDate,
+        earningsEstimate: {
+          low: calendarEvents.earnings?.earningsLow?.raw || null,
+          high: calendarEvents.earnings?.earningsHigh?.raw || null,
+          average: calendarEvents.earnings?.earningsAverage?.raw || null,
+          revenueLow: calendarEvents.earnings?.revenueLow?.fmt || null,
+          revenueHigh: calendarEvents.earnings?.revenueHigh?.fmt || null,
+          revenueAverage: calendarEvents.earnings?.revenueAverage?.fmt || null,
+        },
+        earningsHistory: earningsSurprise,
+        note: "Earnings dates and estimates are subject to change. Verify with official company announcements.",
+      };
+    }),
+});
+
+export const dividendHistoryTool = tool({
+  description:
+    "Get dividend history and yield information for a stock. Useful for income investors.",
+  inputSchema: z.object({
+    symbol: z.string().describe("Stock symbol, e.g. 'AAPL' or 'BBCA'."),
+  }),
+  execute: async ({ symbol }) =>
+    safe(async () => {
+      let data: any = null;
+      for (const v of [symbol, `${symbol}.JK`, `${symbol}.ID`]) {
+        try {
+          const res = await fetch(
+            `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${v.toUpperCase()}?modules=summaryDetail,defaultKeyStatistics`,
+            { headers: YAHOO_HEADERS, signal: AbortSignal.timeout(5000) },
+          );
+          if (res.ok) {
+            data = await res.json();
+            break;
+          }
+        } catch {}
+      }
+
+      if (!data) throw new Error("Dividend data not available");
+
+      const summary = data.quoteSummary?.result?.[0]?.summaryDetail || {};
+      const stats = data.quoteSummary?.result?.[0]?.defaultKeyStatistics || {};
+
+      return {
+        symbol: symbol.toUpperCase(),
+        dividend: {
+          yield: summary.dividendYield?.raw || stats.dividendYield?.raw || null,
+          rate: summary.dividendRate?.raw || stats.dividendRate?.raw || null,
+          exDate: summary.exDividendDate?.fmt || null,
+          payoutRatio: stats.payoutRatio?.raw || null,
+          fiveYearAvgDividendYield: summary.fiveYearAvgDividendYield?.raw || null,
+          trailingAnnualDividendRate: summary.trailingAnnualDividendRate?.raw || null,
+          trailingAnnualDividendYield: summary.trailingAnnualDividendYield?.raw || null,
+        },
+        note: "Dividend data from Yahoo Finance. Ex-dividend dates may vary by exchange.",
+      };
     }),
 });
 
@@ -819,6 +1194,143 @@ export const portfolioManagerTool = tool({
         return { status: "success", action: "sell", portfolio };
       }
       return { status: "success", action: "view", portfolio };
+    }),
+});
+
+export const chartControlTool = tool({
+  description:
+    "Control the stock chart display. Change chart type, timeframe, and toggle technical indicators on/off. This tool modifies the interactive chart that the user can see.",
+  inputSchema: z.object({
+    action: z
+      .enum(["setChartType", "setTimeframe", "toggleIndicator", "getState"])
+      .describe("Action to perform on the chart."),
+    chartType: z
+      .enum(["candlestick", "line", "area", "bar"])
+      .optional()
+      .describe("Chart type to set."),
+    timeframe: z
+      .enum(["1D", "1W", "1M", "3M", "6M", "1Y", "YTD"])
+      .optional()
+      .describe("Timeframe to set."),
+    indicator: z
+      .enum([
+        "sma20",
+        "sma50",
+        "sma200",
+        "ema12",
+        "ema26",
+        "bollinger",
+        "vwap",
+        "volume",
+      ])
+      .optional()
+      .describe("Indicator to toggle on/off."),
+  }),
+  execute: async ({ action, chartType, timeframe, indicator }) =>
+    safe(async () => {
+      if (action === "setChartType" && chartType) {
+        return {
+          action: "setChartType",
+          chartType,
+          message: `Chart type changed to ${chartType}. The chart will update automatically.`,
+        };
+      }
+
+      if (action === "setTimeframe" && timeframe) {
+        return {
+          action: "setTimeframe",
+          timeframe,
+          message: `Timeframe changed to ${timeframe}. The chart will reload data.`,
+        };
+      }
+
+      if (action === "toggleIndicator" && indicator) {
+        return {
+          action: "toggleIndicator",
+          indicator,
+          message: `Indicator ${indicator} toggled. The chart will update to show/hide the indicator.`,
+        };
+      }
+
+      if (action === "getState") {
+        return {
+          action: "getState",
+          message:
+            "Chart state retrieved. Use setChartType, setTimeframe, or toggleIndicator to modify the chart.",
+        };
+      }
+
+      return { error: "Invalid action or missing parameters." };
+    }),
+});
+
+export const chartDrawTool = tool({
+  description:
+    "Draw on the stock chart. Add trendlines, horizontal support/resistance lines, or clear all drawings. This helps visualize key price levels and patterns.",
+  inputSchema: z.object({
+    action: z
+      .enum(["addTrendline", "addHorizontalLine", "clearDrawings"])
+      .describe("Drawing action to perform."),
+    trendline: z
+      .object({
+        startTime: z.string().describe("Start time in ISO format or YYYY-MM-DD"),
+        startPrice: z.number().describe("Start price level"),
+        endTime: z.string().describe("End time in ISO format or YYYY-MM-DD"),
+        endPrice: z.number().describe("End price level"),
+        color: z.string().default("#2196f3").describe("Line color (hex)"),
+        width: z.number().default(2).describe("Line width (1-4)"),
+      })
+      .optional()
+      .describe("Trendline data for addTrendline action."),
+    horizontalLine: z
+      .object({
+        price: z.number().describe("Price level for the horizontal line"),
+        label: z.string().describe("Label for the line (e.g., 'Support', 'Resistance')"),
+        color: z.string().default("#ff9800").describe("Line color (hex)"),
+        width: z.number().default(1).describe("Line width (1-4)"),
+        style: z.enum(["solid", "dashed"]).default("dashed").describe("Line style"),
+      })
+      .optional()
+      .describe("Horizontal line data for addHorizontalLine action."),
+  }),
+  execute: async ({ action, trendline, horizontalLine }) =>
+    safe(async () => {
+      if (action === "addTrendline" && trendline) {
+        const id = `tl-${Date.now()}`;
+        return {
+          action: "addTrendline",
+          id,
+          trendline: {
+            ...trendline,
+            id,
+            startTime: new Date(trendline.startTime).getTime() / 1000,
+            endTime: new Date(trendline.endTime).getTime() / 1000,
+          },
+          message: `Trendline added from ${trendline.startTime} ($${trendline.startPrice}) to ${trendline.endTime} ($${trendline.endPrice}).`,
+        };
+      }
+
+      if (action === "addHorizontalLine" && horizontalLine) {
+        const id = `hl-${Date.now()}`;
+        return {
+          action: "addHorizontalLine",
+          id,
+          horizontalLine: {
+            ...horizontalLine,
+            id,
+          },
+          message: `Horizontal line added at $${horizontalLine.price} (${horizontalLine.label}).`,
+        };
+      }
+
+      if (action === "clearDrawings") {
+        return {
+          action: "clearDrawings",
+          message: "All drawings cleared from the chart.",
+        };
+      }
+
+      return { error: "Invalid action or missing parameters." };
     }),
 });
 
@@ -906,6 +1418,11 @@ export const createOrbitTools = async (
     globalMarkets: globalMarketsTool,
     portfolioManager: portfolioManagerTool,
     financialSentiment: financialSentimentTool,
+    stockScreener: stockScreenerTool,
+    earningsCalendar: earningsCalendarTool,
+    dividendHistory: dividendHistoryTool,
+    chartControl: chartControlTool,
+    chartDraw: chartDrawTool,
     newsSearch: newsSearchTool,
     webSearch: tool({
       description: "Search web.",

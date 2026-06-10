@@ -17,6 +17,8 @@ type ChatRequest = {
   providerId: ProviderId;
   modelId: string;
   apiKey: string;
+  agentId?: string;
+  agentSystemPrompt?: string;
   braveSearchKey?: string;
   searchProvider?: string;
   serperApiKey?: string;
@@ -64,6 +66,8 @@ export async function POST(request: Request) {
     providerId,
     modelId,
     apiKey,
+    agentId,
+    agentSystemPrompt,
     braveSearchKey,
     searchProvider,
     serperApiKey,
@@ -99,7 +103,7 @@ export async function POST(request: Request) {
     const { getMcpClients } = await import("@/lib/agent/mcp");
     const mcpClients = mcpServers ? await getMcpClients(mcpServers) : [];
 
-    let dynamicSystemPrompt = AGENT_SYSTEM_PROMPT;
+    let dynamicSystemPrompt = agentSystemPrompt || AGENT_SYSTEM_PROMPT;
 
     // Inject system runtime date to prevent AI time hallucinations
     const now = new Date();

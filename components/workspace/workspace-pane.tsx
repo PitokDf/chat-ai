@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { Code2, Eye } from "lucide-react";
+import { Code2, Eye, BarChart3 } from "lucide-react";
 
 import { CodeEditor } from "@/components/workspace/code-editor";
 import { FileTree } from "@/components/workspace/file-tree";
@@ -9,12 +8,12 @@ import { PreviewPane } from "@/components/workspace/preview-pane";
 import { TerminalHeader } from "@/components/workspace/terminal-header";
 import { TerminalView } from "@/components/workspace/terminal-view";
 import { BrowserConsoleView } from "@/components/workspace/browser-console";
+import { StockChartPanel } from "@/components/workspace/stock-chart-panel";
 import { useWorkspace } from "@/lib/store/workspace";
 
-type View = "code" | "preview";
-
 export function WorkspacePane() {
-  const [view, setView] = useState<View>("preview");
+  const view = useWorkspace((s) => s.view);
+  const setView = useWorkspace((s) => s.setView);
   const openFile = useWorkspace((s) => s.openFile);
 
   return (
@@ -32,6 +31,18 @@ export function WorkspacePane() {
           >
             <Code2 className="h-3.5 w-3.5" />
             Code
+          </button>
+          <button
+            type="button"
+            onClick={() => setView("chart")}
+            className={`inline-flex items-center gap-1.5 rounded px-2 py-1 ${
+              view === "chart"
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <BarChart3 className="h-3.5 w-3.5" />
+            Chart
           </button>
           <button
             type="button"
@@ -72,7 +83,7 @@ export function WorkspacePane() {
                     window.onerror = function(msg, url, line, col, error) {
                       window.parent.postMessage({ type: 'BROWSER_CONSOLE', level: 'error', args: [msg] }, '*');
                     };
-                  </script>`;
+                  <\/script>`;
                   const htmlWithConsole = content.includes("<head>")
                     ? content.replace("<head>", "<head>" + scriptToInject)
                     : scriptToInject + content;
@@ -111,6 +122,8 @@ export function WorkspacePane() {
               </div>
             </div>
           </div>
+        ) : view === "chart" ? (
+          <StockChartPanel />
         ) : (
           <div className="flex w-full flex-col">
             <div className="flex-1 min-h-0">

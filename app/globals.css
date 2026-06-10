@@ -283,3 +283,82 @@ html[data-reduce-motion="true"] *::after {
 .hljs-strong {
   font-weight: 600;
 }
+
+/* ---------- Callout / Admonition blocks ---------- */
+.callout {
+  margin: 0.75rem 0;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-md);
+  border-left: 3px solid;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.callout :first-child {
+  margin-top: 0;
+}
+.callout :last-child {
+  margin-bottom: 0;
+}
+.callout > :first-child::before {
+  font-weight: 600;
+}
+
+.callout-note {
+  background: oklch(0.95 0.03 240 / 0.3);
+  border-color: oklch(0.6 0.15 240);
+}
+.dark .callout-note {
+  background: oklch(0.25 0.04 240 / 0.4);
+  border-color: oklch(0.5 0.15 240);
+}
+.callout-note > :first-child::before {
+  content: "💡 Note: ";
+}
+
+.callout-tip {
+  background: oklch(0.95 0.05 160 / 0.3);
+  border-color: oklch(0.55 0.15 160);
+}
+.dark .callout-tip {
+  background: oklch(0.22 0.04 160 / 0.4);
+  border-color: oklch(0.5 0.15 160);
+}
+.callout-tip > :first-child::before {
+  content: "💪 Tip: ";
+}
+
+.callout-warning {
+  background: oklch(0.95 0.05 85 / 0.3);
+  border-color: oklch(0.65 0.15 85);
+}
+.dark .callout-warning {
+  background: oklch(0.25 0.04 85 / 0.4);
+  border-color: oklch(0.55 0.15 85);
+}
+.callout-warning > :first-child::before {
+  content: "⚠️ Warning: ";
+}
+
+.callout-caution {
+  background: oklch(0.95 0.06 30 / 0.3);
+  border-color: oklch(0.6 0.2 30);
+}
+.dark .callout-caution {
+  background: oklch(0.25 0.05 30 / 0.4);
+  border-color: oklch(0.5 0.2 30);
+}
+.callout-caution > :first-child::before {
+  content: "🚨 Caution: ";
+}
+
+.callout-important {
+  background: oklch(0.95 0.05 290 / 0.3);
+  border-color: oklch(0.55 0.15 290);
+}
+.dark .callout-important {
+  background: oklch(0.22 0.04 290 / 0.4);
+  border-color: oklch(0.5 0.15 290);
+}
+.callout-important > :first-child::before {
+  content: "❗ Important: ";
+}

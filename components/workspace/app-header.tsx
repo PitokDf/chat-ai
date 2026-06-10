@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { AgentPicker } from "@/components/workspace/agent-picker";
 import { HistoryMenu } from "@/components/workspace/history-menu";
 import { ModelPicker } from "@/components/workspace/model-picker";
 import { SettingsDialog } from "@/components/workspace/settings-dialog";
@@ -97,6 +98,7 @@ export function AppHeader() {
       {/* Right cluster: model picker + actions. Model picker hides labels on
           small screens; icon-only fallbacks for import/settings. */}
       <div className="flex shrink-0 items-center gap-1.5">
+        <AgentPicker />
         <ModelPicker />
         <Dialog open={importOpen} onOpenChange={setImportOpen}>
           <DialogTrigger asChild>

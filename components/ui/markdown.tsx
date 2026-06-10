@@ -8,6 +8,10 @@ import ReactMarkdown, { type Components } from "react-markdown";
 
 import type { PluggableList } from "unified";
 
+import { visit } from "unist-util-visit";
+
+import type { Root } from "mdast";
+
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 
@@ -17,7 +21,7 @@ import rehypeKatex from "rehype-katex";
 
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, ExternalLink } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -65,10 +69,31 @@ type PreProps = ComponentPropsWithoutRef<"pre">;
 
 type InputProps = ComponentPropsWithoutRef<"input">;
 
+function remarkCallouts() {
+  return (tree: Root) => {
+    visit(tree, "blockquote", (node: any) => {
+      const firstChild = node.children?.[0];
+      if (!firstChild || firstChild.type !== "paragraph") return;
+      const firstText = firstChild.children?.[0];
+      if (!firstText || firstText.type !== "text") return;
+      const match = firstText.value.match(/^\[!(\w+)\]\s*/);
+      if (!match) return;
+
+      firstText.value = firstText.value.replace(/^\[\!\w+\]\s*/, "");
+
+      node.data = {
+        hName: "div",
+        hProperties: {
+          className: `callout callout-${match[1].toLowerCase()}`,
+        },
+      };
+    });
+  };
+}
+
 const normalizeMathUnicode = (text: string): string => {
   return (
     text
-      // greek
       .replace(/θ/g, "\\theta")
       .replace(/α/g, "\\alpha")
       .replace(/β/g, "\\beta")
@@ -82,8 +107,6 @@ const normalizeMathUnicode = (text: string): string => {
       .replace(/Ω/g, "\\Omega")
       .replace(/χ/g, "\\chi")
       .replace(/ζ/g, "\\zeta")
-
-      // math
       .replace(/∫/g, "\\int")
       .replace(/∞/g, "\\infty")
       .replace(/√/g, "\\sqrt")
@@ -98,10 +121,6 @@ const normalizeMathUnicode = (text: string): string => {
   );
 };
 
-/**
- * markdown table sering gagal dengan $$ $$
- * jadi convert ke inline math
- */
 const normalizeTableMath = (text: string): string => {
   return text.replace(/\$\$([\s\S]*?)\$\$/g, (_, expr: string) => {
     return `$${expr.trim()}$`;
@@ -111,14 +130,10 @@ const normalizeTableMath = (text: string): string => {
 const preprocessMarkdown = (text: string): string => {
   if (!text) return "";
 
-  // 1. Handle standard delimiters \[ \] and \( \)
   let processed = text
     .replace(/\\\[([\s\S]*?)\\\]/g, (_, expr) => `\n$$\n${expr.trim()}\n$$\n`)
     .replace(/\\\(([\s\S]*?)\\\)/g, (_, expr) => `$${expr.trim()}$`);
 
-  // 2. Handle common LaTeX environments
-  // We wrap them in $$ to ensure they are picked up as math blocks
-  // only if they are not already wrapped.
   processed = processed.replace(
     /(?<![\\\$])(\\begin\{.*?\}(?:[\s\S]*?)\\end\{.*?\})(?![\\\$])/gm,
     (match) => `\n$$\n${match.trim()}\n$$\n`,
@@ -179,6 +194,8 @@ function CodeBlock({
   }
 
   const text = nodeToText(children).replace(/\n$/, "");
+  const lines = text.split("\n");
+  const lineCount = lines.length;
 
   const onCopy = async () => {
     try {
@@ -220,14 +237,24 @@ function CodeBlock({
         </button>
       </div>
 
-      <pre
-        className={cn(
-          "max-h-[320px] overflow-auto px-3 py-2.5 text-[12px] leading-5",
-          className,
+      <div className="flex">
+        {lineCount > 1 && (
+          <div className="select-none border-r border-border/40 px-2 py-2.5 text-right font-mono text-[11px] leading-5 text-muted-foreground/50">
+            {lines.map((_, i) => (
+              <div key={i}>{i + 1}</div>
+            ))}
+          </div>
         )}
-      >
-        {children}
-      </pre>
+
+        <pre
+          className={cn(
+            "max-h-[320px] flex-1 overflow-auto px-3 py-2.5 text-[12px] leading-5",
+            className,
+          )}
+        >
+          {children}
+        </pre>
+      </div>
     </div>
   );
 }
@@ -366,17 +393,25 @@ const createComponents = () => ({
     />
   ),
 
-  a: ({ className, ...props }: AnchorProps) => (
-    <a
-      target="_blank"
-      rel="noreferrer noopener"
-      className={cn(
-        "text-sky-500 underline underline-offset-2 hover:text-sky-400 dark:text-sky-400 dark:hover:text-sky-300",
-        className,
-      )}
-      {...props}
-    />
-  ),
+  a: ({ className, children, ...props }: AnchorProps) => {
+    const isExternal =
+      typeof props.href === "string" &&
+      (props.href.startsWith("http://") || props.href.startsWith("https://"));
+    return (
+      <a
+        target="_blank"
+        rel="noreferrer noopener"
+        className={cn(
+          "inline-flex items-center gap-0.5 text-sky-500 underline underline-offset-2 hover:text-sky-400 dark:text-sky-400 dark:hover:text-sky-300",
+          className,
+        )}
+        {...props}
+      >
+        {children}
+        {isExternal && <ExternalLink className="h-3 w-3 shrink-0 opacity-60" />}
+      </a>
+    );
+  },
 
   blockquote: ({ className, ...props }: BlockquoteProps) => (
     <blockquote
@@ -410,7 +445,13 @@ const createComponents = () => ({
   ),
 
   tr: ({ className, ...props }: TableRowProps) => (
-    <tr className={cn("", className)} {...props} />
+    <tr
+      className={cn(
+        "even:bg-muted/15 transition-colors",
+        className,
+      )}
+      {...props}
+    />
   ),
 
   th: ({ className, ...props }: TableHeaderProps) => (
@@ -489,6 +530,7 @@ const createComponents = () => ({
 
     return <input type={type} className={className} {...props} />;
   },
+
 });
 
 function MarkdownImpl({
@@ -509,12 +551,8 @@ function MarkdownImpl({
   >(
     () => [
       remarkGfm,
-      [
-        remarkMath,
-        {
-          singleDollar: true,
-        },
-      ],
+      [remarkMath, { singleDollar: true }],
+      remarkCallouts,
     ],
     [],
   );

@@ -17,6 +17,9 @@ import {
   Brain,
   Square,
   RotateCcw,
+  BarChart3,
+  Copy,
+  Check,
 } from "lucide-react";
 
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
@@ -24,6 +27,7 @@ import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { Button } from "@/components/ui/button";
 import { Markdown } from "@/components/ui/markdown";
 import { Textarea } from "@/components/ui/textarea";
+import { useAgents } from "@/lib/store/agents";
 import { sendChatMessage, abortChatMessage, retryChatMessage } from "@/lib/agent/controller";
 import {
   useChat,
@@ -38,11 +42,17 @@ import { ToolCallView } from "@/components/workspace/tool-cards";
 import { useWorkspace } from "@/lib/store/workspace";
 
 const TEMPLATES = [
-  "Build a landing page for a productivity app with Tailwind.",
-  "Create a todo list app with add, toggle, and delete.",
-  "Make a pomodoro timer with pause/reset and desktop notifications.",
-  "Scaffold a Vite React app that fetches GitHub user info.",
+  "Analisis saham BBCA dengan chart dan indikator teknikal",
+  "Bandingkan performa BBRI vs BMRI bulan ini",
+  "Cari saham dengan dividend yield tertinggi di IDX",
+  "Tunjukkan chart AAPL dengan Bollinger Bands dan RSI",
+  "Screen saham large cap dengan P/E rendah",
 ];
+
+const STOCK_QUICK_ACTIONS = [
+  { label: "Chart", icon: BarChart3, action: "chart" },
+  { label: "Copy", icon: Copy, action: "copy" },
+] as const;
 
 const AKINATOR_QUICK_ANSWERS = [
   "Ya",
@@ -118,6 +128,35 @@ const ActionLabel = ({ action }: { action: ChatArtifactAction }) => {
   );
 };
 
+const CopyButton = ({ text }: { text: string }) => {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error("Copy failed");
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      className="rounded p-1 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+      title="Copy message"
+    >
+      {copied ? (
+        <Check className="h-3 w-3 text-emerald-400" />
+      ) : (
+        <Copy className="h-3 w-3" />
+      )}
+    </button>
+  );
+};
+
 const MessageBlockInner = ({ message }: { message: ChatMessage }) => {
   const isUser = message.role === "user";
   const telegramBotToken = usePreferences((s) => s.telegramBotToken);
@@ -178,7 +217,7 @@ const MessageBlockInner = ({ message }: { message: ChatMessage }) => {
         window.onerror = function(msg, url, line, col, error) {
           window.parent.postMessage({ type: 'BROWSER_CONSOLE', level: 'error', args: [msg] }, '*');
         };
-      </script>`;
+      <\/script>`;
       const htmlWithConsole = content.includes("<head>")
         ? content.replace("<head>", "<head>" + scriptToInject)
         : scriptToInject + content;
@@ -195,15 +234,90 @@ const MessageBlockInner = ({ message }: { message: ChatMessage }) => {
     }
   };
 
+  const handleOpenInChart = () => {
+    const ws = useWorkspace.getState();
+    ws.setView("chart");
+    toast.info("Opened Chart panel");
+  };
+
+  const hasStockTools = useMemo(() => {
+    return (message.toolCalls ?? []).some(
+      (call) =>
+        call.toolName === "stockQuote" ||
+        call.toolName === "stockHistory" ||
+        call.toolName === "stockTechnicalAnalysis" ||
+        call.toolName === "fundamentalAnalysis",
+    );
+  }, [message.toolCalls]);
+
+  const renderToolCalls = () => {
+    const toolCalls = message.toolCalls ?? [];
+    if (toolCalls.length === 0) return null;
+
+    const hasInterleaved = (message.text ?? "").includes(":::tool-call");
+
+    if (hasInterleaved) {
+      const parts = message.text.split(/(:::tool-call\{id=".*?"\})/g);
+      return (
+        <div className="space-y-3">
+          {parts.map((part, i) => {
+            const match = part.match(/:::tool-call\{id="(.*?)"\}/);
+            if (match) {
+              const id = match[1];
+              const call = toolCalls.find((c) => c.id === id);
+              if (call) {
+                return (
+                  <div key={id} className="my-2">
+                    <ToolCallView call={call} />
+                  </div>
+                );
+              }
+              return null;
+            }
+            if (!part.trim() && i < parts.length - 1) return null;
+            const isLastPart = i === parts.length - 1;
+            return (
+              <Markdown
+                key={i}
+                content={part}
+                compact
+                allowHtml
+                streaming={message.status === "streaming" && isLastPart}
+              />
+            );
+          })}
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-3">
+        {message.text ? (
+          <Markdown
+            content={message.text}
+            compact
+            allowHtml
+            streaming={message.status === "streaming"}
+          />
+        ) : null}
+        <div className="space-y-2">
+          {toolCalls.map((call) => (
+            <ToolCallView key={call.id} call={call} />
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div
-      className={`flex flex-col gap-2 ${isUser ? "items-end" : "items-start"}`}
+      className={`group flex flex-col gap-2 ${isUser ? "items-end" : "items-start"}`}
     >
       <div
-        className={`max-w-[92%] rounded-xl px-3.5 py-2.5 text-sm leading-6 ${
+        className={`relative max-w-[92%] rounded-2xl px-4 py-3 text-sm leading-6 ${
           isUser
-            ? "bg-primary text-primary-foreground"
-            : "bg-muted/40 text-foreground"
+            ? "bg-primary text-primary-foreground rounded-br-md"
+            : "bg-muted/50 text-foreground border border-border/50 rounded-bl-md"
         }`}
       >
         {isUser ? (
@@ -212,21 +326,21 @@ const MessageBlockInner = ({ message }: { message: ChatMessage }) => {
               <div className="flex flex-wrap gap-1.5">
                 {message.attachments!.map((att) =>
                   att.kind === "image" ? (
-                    // eslint-disable-next-line @next/next/no-img-element
                     <img
                       key={att.id}
                       src={att.dataUrl}
                       alt={att.name}
-                      className="max-h-48 max-w-[220px] rounded-md border border-primary/20 object-cover"
+                      className="max-h-48 max-w-[220px] rounded-lg border border-primary/20 object-cover"
                     />
                   ) : (
                     <a
                       key={att.id}
                       href={att.dataUrl}
                       download={att.name}
-                      className="inline-flex items-center gap-1.5 rounded-md bg-primary/20 px-2 py-1 text-[11px]"
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-primary/20 px-2.5 py-1.5 text-[11px]"
                     >
-                      📎 {att.name}
+                      <FileText className="h-3 w-3" />
+                      {att.name}
                     </a>
                   ),
                 )}
@@ -238,44 +352,28 @@ const MessageBlockInner = ({ message }: { message: ChatMessage }) => {
           </div>
         ) : message.role === "assistant" ? (
           <div className="space-y-3">
-            {(() => {
-              const parts = message.text.split(/(:::tool-call\{id=".*?"\})/g);
-              return parts.map((part, i) => {
-                const match = part.match(/:::tool-call\{id="(.*?)"\}/);
-                if (match) {
-                  const id = match[1];
-                  const call = (message.toolCalls ?? []).find(
-                    (c) => c.id === id,
-                  );
-                  if (call) {
-                    return (
-                      <div key={id} className="my-2">
-                        <ToolCallView call={call} />
-                      </div>
-                    );
-                  }
-                  return null;
-                }
-                if (!part.trim() && i < parts.length - 1) return null;
-                const isLastPart = i === parts.length - 1;
-                return (
-                  <Markdown
-                    key={i}
-                    content={part}
-                    compact
-                    allowHtml
-                    streaming={message.status === "streaming" && isLastPart}
-                  />
-                );
-              });
-            })()}
+            {renderToolCalls()}
+
+            {hasStockTools && message.status === "done" && (
+              <button
+                type="button"
+                onClick={handleOpenInChart}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-primary/10 px-3 py-1.5 text-[11px] font-medium text-primary transition hover:bg-primary/20"
+              >
+                <BarChart3 className="h-3.5 w-3.5" />
+                Open in Chart Panel
+              </button>
+            )}
           </div>
         ) : null}
 
         {message.thought && (
           <div className="mt-3">
-            <details className="group overflow-hidden rounded-lg border border-border/50 bg-muted/20" open={message.status === "streaming" && !message.text}>
-              <summary className="flex cursor-pointer items-center justify-between px-3 py-2 text-[11px] font-medium text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-colors list-none [&::-webkit-details-marker]:hidden">
+            <details
+              className="group/thought overflow-hidden rounded-xl border border-border/50 bg-muted/30"
+              open={message.status === "streaming" && !message.text}
+            >
+              <summary className="flex cursor-pointer items-center justify-between px-3 py-2 text-[11px] font-medium text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors list-none [&::-webkit-details-marker]:hidden">
                 <div className="flex items-center gap-2">
                   {message.status === "streaming" && !message.text ? (
                     <Loader2 className="h-3 w-3 animate-spin text-sky-400" />
@@ -288,14 +386,16 @@ const MessageBlockInner = ({ message }: { message: ChatMessage }) => {
                       : "Thought Process"}
                   </span>
                 </div>
-                <span className="text-[10px] opacity-0 group-hover:opacity-100 transition-opacity">
-                  {message.status === "streaming" && !message.text ? "View steps" : "Click to expand"}
+                <span className="text-[10px] opacity-0 group-hover/thought:opacity-100 transition-opacity">
+                  {message.status === "streaming" && !message.text
+                    ? "View steps"
+                    : "Click to expand"}
                 </span>
               </summary>
               <div className="border-t border-border/40 px-3 py-2.5 bg-background/30">
-                <Markdown 
-                  content={message.thought.trim()} 
-                  compact 
+                <Markdown
+                  content={message.thought.trim()}
+                  compact
                   streaming={message.status === "streaming" && !message.text}
                 />
               </div>
@@ -303,42 +403,45 @@ const MessageBlockInner = ({ message }: { message: ChatMessage }) => {
           </div>
         )}
 
-        {/* Fallback for tool calls that aren't interleaved in text (legacy messages) */}
-        {(message.toolCalls ?? []).length > 0 &&
-        !(message.text ?? "").includes(":::tool-call") ? (
-          <div className="mt-3 w-full space-y-2">
-            {(message.toolCalls ?? []).map((call) => (
-              <ToolCallView key={call.id} call={call} />
-            ))}
-          </div>
-        ) : null}
+        <div className="absolute -bottom-4 left-0 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          {!isUser && message.status === "done" && (
+            <CopyButton text={message.text} />
+          )}
+        </div>
       </div>
+
       {canShare && (telegramBotToken || telegramChatId) ? (
         <button
           type="button"
           onClick={() => void handleShareTelegram()}
-          className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-sky-400"
+          className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-sky-400 transition-colors"
         >
           <Send className="h-3 w-3" />
           Send to Telegram
         </button>
       ) : null}
+
       {message.artifacts.length > 0 ? (
         <div className="w-full max-w-[92%] space-y-1.5">
           {message.artifacts.map((artifact) => (
             <div
               key={artifact.id}
-              className="rounded-lg border border-border bg-card/80 p-2.5"
+              className="overflow-hidden rounded-xl border border-border bg-card/80"
             >
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                {artifact.title}
-              </p>
-              <ul className="mt-1.5 space-y-1">
+              <div className="flex items-center justify-between bg-muted/30 px-3 py-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  {artifact.title}
+                </p>
+                <span className="text-[10px] text-muted-foreground/70">
+                  {artifact.actions.length} file{artifact.actions.length !== 1 ? "s" : ""}
+                </span>
+              </div>
+              <ul className="divide-y divide-border">
                 {artifact.actions.map((action) => (
                   <li
                     key={action.id}
                     onClick={() => handleActionClick(action)}
-                    className="flex items-center justify-between gap-2 rounded-md bg-muted/30 px-2 py-1 text-[11px] text-foreground/80 cursor-pointer hover:bg-muted/50 transition-colors"
+                    className="flex items-center justify-between gap-2 px-3 py-2 text-[11px] text-foreground/80 cursor-pointer hover:bg-muted/30 transition-colors"
                   >
                     <ActionLabel action={action} />
                     <div className="flex items-center gap-1.5">
@@ -356,9 +459,9 @@ const MessageBlockInner = ({ message }: { message: ChatMessage }) => {
                           {action.note}
                         </span>
                       ) : null}
-                      <summary className="text-[10px] text-muted-foreground mr-1 hidden sm:inline-block">
-                        See in Workspace
-                      </summary>
+                      <span className="text-[10px] text-muted-foreground hidden sm:inline-block">
+                        Open
+                      </span>
                       <ActionIcon action={action} />
                     </div>
                   </li>
@@ -372,11 +475,6 @@ const MessageBlockInner = ({ message }: { message: ChatMessage }) => {
   );
 };
 
-/**
- * Memoize on identity of the message object — chat store replaces it only
- * when fields actually change, so this prevents non-streaming messages from
- * re-rendering when other siblings update.
- */
 const MessageBlock = memo(
   MessageBlockInner,
   (prev, next) => prev.message === next.message,
@@ -414,7 +512,10 @@ export function ChatPanel() {
     for (const message of messages) {
       const combinedText = `${message.text}\n${message.thought ?? ""}`;
       if (!combinedText) continue;
-      if (message.role === "assistant" && isLikelyAkinatorQuestion(combinedText)) {
+      if (
+        message.role === "assistant" &&
+        isLikelyAkinatorQuestion(combinedText)
+      ) {
         active = true;
       }
       if (message.role === "user" && AKINATOR_STOP_RE.test(combinedText)) {
@@ -487,14 +588,31 @@ export function ChatPanel() {
 
   const sendMessage = async (text: string, attachments = pending) => {
     if (text.trim().length === 0 && attachments.length === 0) return;
-    const currentKey = selectCurrentKey(useSettings.getState());
-    if (!currentKey) {
-      const message =
-        "Add an API key for the selected provider in Settings first.";
-      setError(message);
-      toast.error("No API key", message);
-      return;
+    const activeAgentId = useAgents.getState().activeAgentId;
+    const settings = useSettings.getState();
+
+    if (activeAgentId) {
+      const { useAgents: agentsStore } = await import("@/lib/store/agents");
+      const agent = agentsStore
+        .getState()
+        .agents.find((a) => a.id === activeAgentId);
+      if (agent && !settings.apiKeys[agent.providerId]) {
+        const message = `Add an API key for ${agent.providerId} in Settings first.`;
+        setError(message);
+        toast.error("No API key", message);
+        return;
+      }
+    } else {
+      const currentKey = selectCurrentKey(settings);
+      if (!currentKey) {
+        const message =
+          "Add an API key for the selected provider in Settings first.";
+        setError(message);
+        toast.error("No API key", message);
+        return;
+      }
     }
+
     setError(null);
     setInput("");
     setPending([]);
@@ -502,6 +620,7 @@ export function ChatPanel() {
     try {
       await sendChatMessage({
         text,
+        agentId: activeAgentId ?? undefined,
         attachments: attachments.map((a) => ({
           name: a.name,
           mimeType: a.mimeType,
@@ -551,25 +670,24 @@ export function ChatPanel() {
       <div className="flex-1 min-h-0">
         {messages.length === 0 ? (
           <div className="mx-auto flex h-full max-w-md flex-col items-center justify-center gap-5 px-3 py-4 text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground text-lg font-bold">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-primary/80 text-primary-foreground text-xl font-bold shadow-lg">
               O
             </div>
             <div>
-              <p className="text-base font-semibold text-foreground">
-                What do you want to build today?
+              <p className="text-lg font-semibold text-foreground">
+                Stock Analysis & Charting
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                Orbit writes and runs the project in an in-browser Node.js
-                sandbox.
+                Analisis saham dengan chart interaktif dan indikator teknikal
               </p>
             </div>
-            <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2">
+            <div className="grid w-full grid-cols-1 gap-2">
               {TEMPLATES.map((template) => (
                 <button
                   key={template}
                   type="button"
                   onClick={() => setInput(template)}
-                  className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-left text-xs text-muted-foreground transition hover:bg-muted/60 hover:text-foreground"
+                  className="rounded-xl border border-border bg-muted/30 px-3 py-2.5 text-left text-xs text-muted-foreground transition hover:bg-muted/60 hover:text-foreground hover:border-primary/30"
                 >
                   {template}
                 </button>
@@ -589,7 +707,7 @@ export function ChatPanel() {
             className="h-full"
             increaseViewportBy={{ top: 300, bottom: 600 }}
             itemContent={(_index, message) => (
-              <div className="px-3 pt-2 pb-4">
+              <div className="px-3 pt-3 pb-6">
                 <MessageBlock message={message} />
               </div>
             )}
@@ -607,7 +725,7 @@ export function ChatPanel() {
         onDrop={handleDrop}
       >
         {error ? (
-          <div className="mb-2 flex items-center justify-between gap-3 rounded-md border border-destructive/40 bg-destructive/10 px-2.5 py-1.5 text-[11px] text-destructive">
+          <div className="mb-2 flex items-center justify-between gap-3 rounded-xl border border-destructive/40 bg-destructive/10 px-3 py-2 text-[11px] text-destructive">
             <span className="flex-1">{error}</span>
             <button
               type="button"
@@ -617,12 +735,14 @@ export function ChatPanel() {
                 try {
                   await retryChatMessage();
                 } catch (err) {
-                  setError(err instanceof Error ? err.message : "Retry failed");
+                  setError(
+                    err instanceof Error ? err.message : "Retry failed",
+                  );
                 } finally {
                   setSending(false);
                 }
               }}
-              className="flex items-center gap-1 rounded bg-destructive/20 px-1.5 py-0.5 font-medium transition hover:bg-destructive/30"
+              className="flex items-center gap-1 rounded-lg bg-destructive/20 px-2 py-1 font-medium transition hover:bg-destructive/30"
             >
               <RotateCcw className="h-3 w-3" />
               Retry
@@ -634,23 +754,24 @@ export function ChatPanel() {
             {pending.map((att) => (
               <div
                 key={att.id}
-                className="relative flex items-center gap-2 rounded-md border border-border bg-muted/40 px-2 py-1.5 pr-7 text-[11px]"
+                className="relative flex items-center gap-2 rounded-xl border border-border bg-muted/40 px-2.5 py-2 pr-8 text-[11px]"
               >
                 {att.kind === "image" ? (
-                  // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={att.dataUrl}
                     alt={att.name}
-                    className="h-8 w-8 rounded object-cover"
+                    className="h-10 w-10 rounded-lg object-cover"
                   />
                 ) : (
-                  <FileText className="h-4 w-4 text-muted-foreground" />
+                  <FileText className="h-5 w-5 text-muted-foreground" />
                 )}
-                <span className="max-w-[180px] truncate">{att.name}</span>
+                <span className="max-w-[180px] truncate font-medium">
+                  {att.name}
+                </span>
                 <button
                   type="button"
                   onClick={() => removePending(att.id)}
-                  className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-lg p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
                   aria-label="Remove"
                 >
                   <X className="h-3 w-3" />
@@ -666,14 +787,14 @@ export function ChatPanel() {
                 key={answer}
                 type="button"
                 onClick={() => void sendMessage(answer, [])}
-                className="rounded-full border border-border bg-background px-3 py-1 text-xs text-foreground transition hover:bg-muted"
+                className="rounded-full border border-border bg-background px-3 py-1.5 text-xs text-foreground transition hover:bg-muted"
               >
                 {answer}
               </button>
             ))}
           </div>
         ) : null}
-        <div className="relative rounded-xl border border-border bg-muted/30 focus-within:border-ring">
+        <div className="relative rounded-2xl border border-border bg-muted/30 focus-within:border-ring transition-colors">
           <Textarea
             value={input}
             onChange={(event) => setInput(event.target.value)}
@@ -685,7 +806,7 @@ export function ChatPanel() {
               }
             }}
             onPaste={handlePaste}
-            placeholder="Describe what you want to build, or drop / paste a file..."
+            placeholder="Tanya tentang saham, minta chart, atau analisis teknikal..."
             className="min-h-[76px] resize-none border-0 bg-transparent pl-10 pr-11 text-sm shadow-none focus-visible:ring-0"
           />
           <input
@@ -703,7 +824,7 @@ export function ChatPanel() {
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="absolute bottom-2 left-2 rounded-md p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+            className="absolute bottom-2.5 left-2.5 rounded-lg p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
             aria-label="Attach file"
             title="Attach file"
           >
@@ -713,7 +834,7 @@ export function ChatPanel() {
             type="submit"
             size="icon-sm"
             disabled={!canSend && !sending}
-            className="absolute bottom-2 right-2"
+            className="absolute bottom-2.5 right-2.5 rounded-xl"
             aria-label={sending ? "Stop" : "Send"}
             title={sending ? "Stop generation" : "Send message"}
             onClick={(e) => {
@@ -738,8 +859,8 @@ export function ChatPanel() {
         </div>
         <p className="mt-1.5 text-[10.5px] text-muted-foreground">
           {sendOnEnter
-            ? "Enter to send, Shift+Enter for a new line. Drop or paste files."
-            : "Click send. Shift+Enter = newline. Drop or paste files."}
+            ? "Enter untuk kirim, Shift+Enter untuk baris baru. Drop atau paste file."
+            : "Klik send. Shift+Enter = baris baru. Drop atau paste file."}
         </p>
       </form>
     </div>

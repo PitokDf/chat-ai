@@ -9,6 +9,7 @@ export type SkillRecord = {
   name: string;
   description: string;
   content: string;
+  fromStore?: string;
 };
 
 export type SkillsState = {

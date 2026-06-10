@@ -6,6 +6,8 @@ import { AppHeader } from "@/components/workspace/app-header";
 import { ChatPanel } from "@/components/workspace/chat-panel";
 import { MobileTabs } from "@/components/workspace/mobile-tabs";
 import { MusicPlayer } from "@/components/workspace/music-player";
+import { TelegramPoller } from "@/components/workspace/telegram-poller";
+import { CronRunner } from "@/components/workspace/cron-runner";
 import { WorkspacePane } from "@/components/workspace/workspace-pane";
 import {
   ResizableGroup,
@@ -165,6 +167,8 @@ export default function Page() {
     <div className="flex h-screen flex-col">
       <AppHeader />
       <MusicPlayer />
+      <TelegramPoller />
+      <CronRunner />
       <main className="flex min-h-0 flex-1 overflow-hidden p-3">
         <div className="hidden h-full w-full md:block">
           <ResizableGroup orientation="horizontal" id="orbit-layout-v2">

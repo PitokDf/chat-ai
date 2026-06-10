@@ -37,6 +37,7 @@ type WorkspaceState = {
   previewBlobUrl: string | null;
   files: Record<string, string>;
   openFile: string | null;
+  view: "code" | "chart" | "preview";
   terminal: TerminalLine[];
   browserLogs: BrowserLog[];
   devProcess: WebContainerProcess | null;
@@ -46,6 +47,7 @@ type WorkspaceState = {
   setPreviewBlobUrl: (url: string | null) => void;
   upsertFile: (path: string, content: string) => void;
   setOpenFile: (path: string | null) => void;
+  setView: (view: "code" | "chart" | "preview") => void;
   appendTerminal: (line: Omit<TerminalLine, "id" | "at">) => void;
   clearTerminal: () => void;
   appendBrowserLog: (log: Omit<BrowserLog, "id" | "at">) => void;
@@ -63,6 +65,7 @@ export const useWorkspace = create<WorkspaceState>((set) => ({
   previewBlobUrl: null,
   files: {},
   openFile: null,
+  view: "preview",
   terminal: [],
   browserLogs: [],
   devProcess: null,
@@ -76,6 +79,7 @@ export const useWorkspace = create<WorkspaceState>((set) => ({
       openFile: state.openFile ?? path,
     })),
   setOpenFile: (openFile) => set({ openFile }),
+  setView: (view) => set({ view }),
   appendTerminal: (line) =>
     set((state) => ({
       terminal: [
